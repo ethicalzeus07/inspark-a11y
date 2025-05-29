@@ -1,9 +1,10 @@
 // popup.js – Main script for the extension popup UI
+import { apiService } from './api.js';
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', () => {
   console.log("🎉 popup.js loaded");
 
-  // DOM Elements
+  // ────────── DOM Elements ──────────
   const scanBtn                = document.getElementById('scanBtn');
   const globalScanBtn          = document.getElementById('globalScanBtn');
   const exportBtn              = document.getElementById('exportBtn');
@@ -20,13 +21,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const detailTitle            = document.getElementById('detailTitle');
   const detailContent          = document.getElementById('detailContent');
   const aiSuggestion           = document.getElementById('aiSuggestion');
+  const fetchAiSuggestion      = document.getElementById('fetchAiSuggestion');
+  const deepseekAiSuggestion   = document.getElementById('deepseekAiSuggestion');
 
-  // State
-  let currentResults = [];
-  let globalResults  = {};    // { url: [issues...] }
-  let activeFilter   = 'all';
+  // ────────── State ──────────
+  let currentResults    = [];
+  let globalResults     = {};
+  let activeFilter      = 'all';
+  let currentIssueForAi = null;
 
-  // Initialize per-page from storage
+  // Load last scan from storage
   chrome.storage.local.get(['lastScanResults'], ({ lastScanResults }) => {
     if (lastScanResults) {
       currentResults = lastScanResults;
@@ -34,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // ─── Button handlers ─────────────────────────────────────────────
+  // ────────── Handlers ──────────
 
   scanBtn.addEventListener('click', startScan);
   globalScanBtn.addEventListener('click', startGlobalScan);
@@ -49,9 +53,40 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  closeDetail.addEventListener('click', () => issueDetail.classList.add('hidden'));
+  closeDetail.addEventListener('click', () => {
+    issueDetail.classList.add('hidden');
+  });
 
-  // ─── Start a single-page scan ────────────────────────────────────
+  fetchAiSuggestion.addEventListener('click', async () => {
+    if (!currentIssueForAi) return;
+
+    fetchAiSuggestion.disabled = true;
+    fetchAiSuggestion.textContent = 'Loading…';
+    deepseekAiSuggestion.classList.remove('hidden');
+    deepseekAiSuggestion.textContent = 'Getting DeepSeek AI suggestion…';
+
+    try {
+      const suggestion = await apiService.getDeepSeekSuggestion(currentIssueForAi);
+      deepseekAiSuggestion.textContent = suggestion;
+    } catch {
+      deepseekAiSuggestion.textContent = 'Could not get AI suggestion.';
+    }
+
+    fetchAiSuggestion.disabled = false;
+    fetchAiSuggestion.textContent = 'Show DeepSeek AI Suggestion';
+  });
+
+  chrome.runtime.onMessage.addListener(request => {
+    switch(request.action) {
+      case 'scanProgress':       return updateScanProgress(request.progress);
+      case 'scanComplete':       return scanComplete(request.results);
+      case 'globalScanComplete': return handleGlobalComplete(request.globalResults);
+      case 'scanError':          return showError(request.error);
+      case 'aiSuggestionReady':  return updateAiSuggestion(request.issueId, request.suggestion);
+    }
+  });
+
+  // ────────── Scan Functions ──────────
 
   function startScan() {
     scanStatus.textContent = 'Scanning page… 0%';
@@ -62,19 +97,13 @@ document.addEventListener('DOMContentLoaded', function() {
     scanBtn.disabled = exportBtn.disabled = globalScanBtn.disabled = true;
 
     chrome.tabs.query({ active:true, currentWindow:true }, tabs => {
-      chrome.tabs.sendMessage(
-        tabs[0].id,
-        { action: 'startScan' },
-        () => {
-          if (chrome.runtime.lastError) {
-            showError('Could not connect to page. Please refresh and try again.');
-          }
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'startScan' }, () => {
+        if (chrome.runtime.lastError) {
+          showError('Could not connect to page. Please refresh and try again.');
         }
-      );
+      });
     });
   }
-
-  // ─── Start a full global scan ─────────────────────────────────────
 
   function startGlobalScan() {
     globalStatus.textContent = 'Global scan in progress…';
@@ -83,48 +112,18 @@ document.addEventListener('DOMContentLoaded', function() {
     scanBtn.disabled = exportBtn.disabled = globalScanBtn.disabled = true;
 
     chrome.tabs.query({ active:true, currentWindow:true }, tabs => {
-      chrome.tabs.sendMessage(
-        tabs[0].id,
-        { action: 'startGlobalScan' },
-        () => {
-          if (chrome.runtime.lastError) {
-            showError('Could not start global scan. Please refresh and try again.');
-          }
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'startGlobalScan' }, () => {
+        if (chrome.runtime.lastError) {
+          showError('Could not start global scan. Please refresh and try again.');
         }
-      );
+      });
     });
   }
 
-  // ─── Message listener ─────────────────────────────────────────────
-
-  chrome.runtime.onMessage.addListener(request => {
-    console.log("🛰️ popup.js got message:", request);
-    switch(request.action) {
-      case 'scanProgress':
-        updateScanProgress(request.progress);
-        break;
-      case 'scanComplete':
-        scanComplete(request.results);
-        break;
-      case 'globalScanComplete':
-        handleGlobalComplete(request.globalResults);
-        break;
-      case 'scanError':
-        showError(request.error);
-        break;
-      case 'aiSuggestionReady':
-        updateAiSuggestion(request.issueId, request.suggestion);
-        break;
-    }
-    return true;
-  });
-
-  // ─── Handlers ────────────────────────────────────────────────────
+  // ────────── Response Handlers ──────────
 
   function scanComplete(results) {
-    // hide global results when doing a page scan
     globalResultsContainer.classList.add('hidden');
-
     scanStatus.classList.add('hidden');
     scanBtn.disabled = exportBtn.disabled = globalScanBtn.disabled = false;
     currentResults = results;
@@ -133,16 +132,14 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function handleGlobalComplete(results) {
-    // hide per-page results when doing a global scan
     resultsContainer.classList.add('hidden');
-
     globalStatus.classList.add('hidden');
     scanBtn.disabled = exportBtn.disabled = globalScanBtn.disabled = false;
     globalResults = results;
     updateGlobalResultsView();
   }
 
-  // ─── Per-page UI updates ──────────────────────────────────────────
+  // ────────── UI Rendering ──────────
 
   function updateResultsView() {
     if (currentResults.length) {
@@ -165,8 +162,7 @@ document.addEventListener('DOMContentLoaded', function() {
       : currentResults.filter(i => i.category === activeFilter);
 
     if (!list.length) {
-      issuesList.innerHTML = `
-        <div class="text-center text-gray-500 py-8">
+      issuesList.innerHTML = `<div class="text-center text-gray-500 py-8">
           No ${activeFilter==='all'?'':activeFilter} issues found
         </div>`;
       return;
@@ -179,9 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
       el.innerHTML = `
         <div class="flex justify-between">
           <div class="font-medium">${issue.title}</div>
-          <div class="text-xs px-2 py-1 rounded ${getSeverityClass(issue.severity)}">
-            ${issue.severity}
-          </div>
+          <div class="text-xs px-2 py-1 rounded ${issue.severity}">${issue.severity}</div>
         </div>
         <div class="text-sm text-gray-600 mt-1">
           ${issue.description.slice(0,100)}${issue.description.length>100?'…':''}
@@ -195,8 +189,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // ─── Global-scan UI updates ───────────────────────────────────────
-
   function updateGlobalResultsView() {
     globalResultsContainer.innerHTML = '<h4 class="font-medium mb-2">Global Scan Results</h4>';
     Object.entries(globalResults).forEach(([url, issues]) => {
@@ -208,9 +200,10 @@ document.addEventListener('DOMContentLoaded', function() {
     globalResultsContainer.classList.remove('hidden');
   }
 
-  // ─── Helpers (unchanged) ─────────────────────────────────────────
+  // ────────── Detail Modal ──────────
 
   function showIssueDetail(issue) {
+    currentIssueForAi = issue;
     detailTitle.textContent = issue.title;
     detailContent.innerHTML = `
       <div class="mb-4">
@@ -225,17 +218,26 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="text-xs font-medium text-gray-500 uppercase mb-1">Selector</div>
         <div class="text-sm font-mono bg-gray-100 p-2 rounded overflow-x-auto">${issue.selector}</div>
       </div>
-      ${issue.screenshot ? `
-        <div class="mb-4">
-          <div class="text-xs font-medium text-gray-500 uppercase mb-1">Screenshot</div>
-          <img src="${issue.screenshot}" alt="Issue screenshot" class="border border-gray-200 rounded max-w-full h-auto">
-        </div>
-      ` : ''}
+      ${issue.screenshot
+        ? `<div class="mb-4">
+             <div class="text-xs font-medium text-gray-500 uppercase mb-1">Screenshot</div>
+             <img src="${issue.screenshot}" class="border border-gray-200 rounded max-w-full h-auto"/>
+           </div>`
+        : ''}
     `;
-    aiSuggestion.textContent = issue.aiSuggestion || 'Generating AI recommendation…';
+
+    // FastAPI suggestion
+    aiSuggestion.textContent = issue.aiSuggestion || 'Generating recommendation…';
     if (!issue.aiSuggestion) {
-      chrome.runtime.sendMessage({ action: "getAiSuggestion", issue });
+      chrome.runtime.sendMessage({ action: 'getAiSuggestion', issue });
     }
+
+    // reset DeepSeek UI
+    deepseekAiSuggestion.classList.add('hidden');
+    deepseekAiSuggestion.textContent = '';
+    fetchAiSuggestion.disabled = false;
+    fetchAiSuggestion.textContent = 'Show DeepSeek AI Suggestion';
+
     issueDetail.classList.remove('hidden');
     highlightElement(issue.selector);
   }
@@ -245,29 +247,28 @@ document.addEventListener('DOMContentLoaded', function() {
     if (idx > -1) {
       currentResults[idx].aiSuggestion = suggestion;
       chrome.storage.local.set({ lastScanResults: currentResults });
-      if (!issueDetail.classList.contains('hidden') &&
-          detailTitle.textContent === currentResults[idx].title) {
+      if (!issueDetail.classList.contains('hidden')
+          && detailTitle.textContent === currentResults[idx].title) {
         aiSuggestion.textContent = suggestion;
       }
     }
   }
 
+  // ────────── Helpers ──────────
+
   function highlightElement(selector) {
     chrome.tabs.query({ active:true, currentWindow:true }, tabs => {
-      chrome.tabs.sendMessage(tabs[0].id, { action: "highlightElement", selector });
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'highlightElement', selector });
     });
   }
-
   function removeHighlight() {
     chrome.tabs.query({ active:true, currentWindow:true }, tabs => {
-      chrome.tabs.sendMessage(tabs[0].id, { action: "removeHighlight" });
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'removeHighlight' });
     });
   }
-
   function exportReport() {
-    chrome.runtime.sendMessage({ action: "exportReport", results: currentResults });
+    chrome.runtime.sendMessage({ action: 'exportReport', results: currentResults });
   }
-
   function showError(message) {
     scanStatus.classList.add('hidden');
     globalStatus.classList.add('hidden');
@@ -275,16 +276,20 @@ document.addEventListener('DOMContentLoaded', function() {
     emptyState.classList.remove('hidden');
     emptyState.innerHTML = `
       <div class="text-red-500 mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3
-                   L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16
-                   c-.77 1.333.192 3 1.732 3z" />
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667
+                   1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34
+                   16c-.77 1.333.192 3 1.732 3z" />
         </svg>
       </div>
       <h3 class="text-lg font-medium text-gray-700">Error</h3>
       <p class="text-gray-500 mt-1">${message}</p>
     `;
+  }
+  function updateScanProgress(pct) {
+    scanStatus.textContent = `Scanning page… ${pct}%`;
   }
 
   function getSeverityClass(sev) {
@@ -295,9 +300,5 @@ document.addEventListener('DOMContentLoaded', function() {
       case 'minor':    return 'bg-gray-100 text-gray-800';
       default:         return 'bg-gray-100 text-gray-800';
     }
-  }
-
-  function updateScanProgress(pct) {
-    scanStatus.textContent = `Scanning page… ${pct}%`;
   }
 });

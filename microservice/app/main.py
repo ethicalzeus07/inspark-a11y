@@ -7,26 +7,18 @@ from typing import Optional, List, Dict, Any
 import logging
 import os
 import json
-import time
 from datetime import datetime
 import hashlib
 import requests
-from huggingface_hub import InferenceClient
 
-# ─── Configure logging ─────────────────────────────────────────────
+# ─── Logging ───
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("inspark-a11y-assistant")
 
-# ─── Instantiate HF client ────────────────────────────────────────
-hf_api_key = os.getenv("MISTRAL_API_KEY")
-if not hf_api_key:
-    logger.warning("MISTRAL_API_KEY not set; /api/suggest will error")
-hf_client = InferenceClient(token=hf_api_key)
-
-# ─── FastAPI app setup ─────────────────────────────────────────────
+# ─── FastAPI app ───
 app = FastAPI(
     title="Inspark AI-Powered Accessibility Assistant",
     description="AI microservice for generating accessibility and UI/UX suggestions",
@@ -35,13 +27,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # tighten this in prod
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ─── Request / Response models ─────────────────────────────────────
+# ─── Models ───
 class IssueRequest(BaseModel):
     issueType: str
     issueDescription: str
@@ -65,69 +57,90 @@ class AnalysisResponse(BaseModel):
     summary: str
     timestamp: str
 
-# ─── In-memory cache ───────────────────────────────────────────────
+# ─── Cache (for classic suggestion only) ───
 suggestion_cache: Dict[str, str] = {}
 
-# ─── PII redaction stub ────────────────────────────────────────────
+# ─── Helpers ───
 def detect_and_redact_pii(text: str) -> str:
-    # In prod you'd regex-redact emails, phones, SSNs, etc.
     return text
 
-# ─── API key check stub ────────────────────────────────────────────
 async def verify_api_key(request: Request):
-    # No-op in dev. To enforce, check X-API-Key vs env var here.
     return True
 
-# ─── HF call helper ────────────────────────────────────────────────
-def call_hf_instruct(prompt: str) -> str:
-    """
-    Call Hugging Face inference API for Mistral-7B-Instruct.
-    """
-    if not hf_api_key:
-        raise HTTPException(status_code=500, detail="Mistral API key not configured")
-
-    # ✅ use /models/ rather than /pipeline/
-    url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
-    headers = {"Authorization": f"Bearer {hf_api_key}"}
-    payload = {
-      "inputs": prompt,
-      "parameters": {"max_new_tokens": 100}
+# ─── FastAPI/heuristic suggestion (classic) ───
+def fastapi_suggestion(issue: IssueRequest) -> str:
+    suggestions = {
+        "a11y": {
+            "color-contrast": "Increase the contrast ratio. Try using a darker text or lighter background.",
+            "image-alt": "Add alt text to images describing their function.",
+            "default": "Review WCAG guidelines for accessibility compliance.",
+        },
+        "uiux": {
+            "touch-target-size": "Make sure clickable elements are at least 44x44px.",
+            "default": "Follow responsive/mobile-first best practices.",
+        }
     }
+    return (
+        suggestions.get(issue.category, {}).get(issue.issueType)
+        or suggestions.get(issue.category, {}).get("default")
+        or "Review accessibility and UI/UX best practices."
+    )
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=30)
-    resp.raise_for_status()
-    out = resp.json()
+# ─── OpenRouter/DeepSeek Suggestion ───
+def call_deepseek_openrouter(issue: IssueRequest) -> str:
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    if not openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter API key not configured.")
 
-    # HF returns a list of {generated_text: ...}
-    if isinstance(out, list) and out and "generated_text" in out[0]:
-        return out[0]["generated_text"]
-    if isinstance(out, dict) and "generated_text" in out:
-        return out["generated_text"]
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {openrouter_api_key}",
+        "Content-Type": "application/json",
+    }
+    prompt = (
+        "You are an accessibility and UI/UX expert. "
+        "Given the following issue, suggest a specific, actionable fix:\n"
+        f"Issue Type: {issue.issueType}\n"
+        f"Severity: {issue.severity}\n"
+        f"Description: {issue.issueDescription}\n"
+        f"HTML Element: {issue.element}\n"
+        "Return just the recommendation."
+    )
+    payload = {
+        "model": "deepseek/deepseek-r1-0528:free",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        out = resp.json()
+        if (
+            "choices" in out and len(out["choices"]) > 0 and
+            "message" in out["choices"][0] and
+            "content" in out["choices"][0]["message"]
+        ):
+            return out["choices"][0]["message"]["content"].strip()
+        return "Sorry, could not generate an AI suggestion."
+    except Exception as e:
+        logger.error(f"DeepSeek API error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get AI suggestion from DeepSeek/OpenRouter.")
 
-    raise HTTPException(status_code=500, detail="Unexpected Hugging Face response")
-
-
-# ─── Routes ────────────────────────────────────────────────────────
+# ─── Routes ───
 
 @app.get("/")
 async def root():
     return {"name": app.title, "version": app.version, "status": "operational"}
 
-@app.post(
-    "/api/suggest",
-    response_model=SuggestionResponse,
-    dependencies=[Depends(verify_api_key)]
-)
+@app.post("/api/suggest", response_model=SuggestionResponse, dependencies=[Depends(verify_api_key)])
 async def generate_suggestion(request: IssueRequest):
     """
-    Generate an AI-powered suggestion for a single issue.
+    Classic FastAPI/heuristic suggestion (always runs)
     """
     try:
-        # redact PII
         elem = detect_and_redact_pii(request.element)
         desc = detect_and_redact_pii(request.issueDescription)
-
-        # caching key
         key = f"{request.category}:{request.issueType}:{hashlib.md5(elem.encode()).hexdigest()}"
         if key in suggestion_cache:
             logger.info(f"Cache hit: {key}")
@@ -135,47 +148,40 @@ async def generate_suggestion(request: IssueRequest):
                 suggestion=suggestion_cache[key],
                 timestamp=datetime.now().isoformat()
             )
-
-        # build prompt
-        prompt = (
-            "You are an accessibility and UI/UX assistant.\n"
-            f"Issue Type: {request.issueType}\n"
-            f"Severity: {request.severity}\n"
-            f"Description: {desc}\n"
-            f"HTML Element: {elem}\n\n"
-            "Please suggest a clear, concise fix."
-        )
-
-        # call HF
-        suggestion = call_hf_instruct(prompt)
-
-        # cache & return
+        suggestion = fastapi_suggestion(request)
         suggestion_cache[key] = suggestion
         return SuggestionResponse(
             suggestion=suggestion,
             timestamp=datetime.now().isoformat()
         )
-
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error [/api/suggest]: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post(
-    "/api/analyze",
-    response_model=AnalysisResponse,
-    dependencies=[Depends(verify_api_key)]
-)
-async def analyze_page(request: AnalysisRequest):
+@app.post("/api/ai_suggest", response_model=SuggestionResponse, dependencies=[Depends(verify_api_key)])
+async def ai_generate_suggestion(request: IssueRequest):
     """
-    Analyze a full page and generate suggestions for each issue.
+    DeepSeek (OpenRouter) AI suggestion (only runs when user clicks AI Suggestion)
     """
     try:
-        # redact PII from HTML
-        _ = detect_and_redact_pii(request.html)
-        suggestions: Dict[str, str] = {}
+        elem = detect_and_redact_pii(request.element)
+        desc = detect_and_redact_pii(request.issueDescription)
+        ai_suggestion = call_deepseek_openrouter(request)
+        return SuggestionResponse(
+            suggestion=ai_suggestion,
+            timestamp=datetime.now().isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Error [/api/ai_suggest]: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/analyze", response_model=AnalysisResponse, dependencies=[Depends(verify_api_key)])
+async def analyze_page(request: AnalysisRequest):
+    """
+    Analyze a full page and generate suggestions for each issue (using FastAPI/heuristic).
+    """
+    try:
+        suggestions: Dict[str, str] = {}
         for idx, issue in enumerate(request.issues):
             req = IssueRequest(
                 issueType=issue.get("type", "unknown"),
@@ -194,9 +200,6 @@ async def analyze_page(request: AnalysisRequest):
             summary=summary,
             timestamp=datetime.now().isoformat()
         )
-
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error [/api/analyze]: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -205,7 +208,7 @@ async def analyze_page(request: AnalysisRequest):
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-# ─── Run locally ───────────────────────────────────────────────────
+# ─── Run locally ───
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
