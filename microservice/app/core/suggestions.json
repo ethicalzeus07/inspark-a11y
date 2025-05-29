@@ -1,0 +1,25 @@
+{
+  "a11y": {
+    "color-contrast": "Increase the contrast ratio to at least 4.5:1 for normal text or 3:1 for large text. Consider using a darker foreground color or lighter background. For this specific element, you could try using #333333 for text on light backgrounds or #FFFFFF for text on dark backgrounds.",
+    "image-alt": "Add an alt attribute to the image that concisely describes its content or purpose. If the image is decorative, use alt=\"\". For educational content, ensure the alt text conveys the same information that a sighted student would get from the image.",
+    "aria-required-attr": "Add the missing required ARIA attributes for this role. Each ARIA role has specific required attributes that must be included to properly convey the element's state to assistive technologies.",
+    "aria-roles": "Ensure the ARIA role used is valid and appropriate for this element. Check that the element can legally have this role assigned to it according to the ARIA specification.",
+    "button-name": "Add text content to the button or an aria-label attribute. Every interactive element should have a clear, descriptive label that indicates its purpose.",
+    "document-title": "Add a descriptive title to the document that identifies its content. This is essential for users of screen readers to understand the page's purpose.",
+    "duplicate-id": "Ensure all ID attributes are unique within the document. Duplicate IDs can cause issues with JavaScript functionality and assistive technologies.",
+    "frame-title": "Add a title attribute to the iframe that describes its content. This helps screen reader users understand what content is contained in the frame.",
+    "html-has-lang": "Add a lang attribute to the HTML element to specify the language of the page. This helps screen readers pronounce content correctly.",
+    "label": "Associate a label with this form element using either a <label> element with a 'for' attribute or by nesting the input inside the label.",
+    "link-name": "Provide descriptive text content for this link. Avoid generic phrases like 'click here' or 'read more' without context.",
+    "default": "Review WCAG 2.2 AA guidelines for this element to ensure compliance. Consider the specific context of educational content and how this element might affect students with disabilities."
+  },
+  "uiux": {
+    "touch-target-size": "Increase the touch target size to at least 44x44 pixels to ensure it's easily tappable on mobile devices. This is especially important for interactive elements that students will use frequently.",
+    "content-overflow": "Implement responsive design techniques to ensure content adapts to different screen sizes. Consider using CSS media queries and flexible layouts to prevent horizontal scrolling on small screens.",
+    "font-size-too-small": "Increase the font size to at least 16px (or 1rem) for body text to ensure readability across devices. For educational content, consider using slightly larger text (18px) for improved readability during extended study sessions.",
+    "element-overlap": "Fix the overlapping elements by adjusting positioning, margins, or layout. Ensure that all content is fully visible and accessible at all viewport sizes.",
+    "fixed-header-obscuring": "Adjust the fixed header implementation to ensure it doesn't obscure important content when users scroll. Consider adding sufficient padding-top to the content area or implementing a more sophisticated scroll behavior.",
+    "viewport-width": "Ensure all content fits within the viewport width without requiring horizontal scrolling. Use responsive techniques like percentage-based widths, max-width, and flexible images.",
+    "default": "Follow Inspark mobile guidelines to ensure consistent user experience across devices. Remember that students may access course content on a wide variety of devices and in different environments."
+  }
+}

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Inspark Accessibility Assistant</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    body {
+      width: 400px;
+      height: 600px;
+      overflow-y: auto;
+    }
+    .issue-highlight {
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .issue-highlight:hover {
+      border-color: #3B82F6;
+    }
+    .critical   { border-left: 4px solid #EF4444; }
+    .serious    { border-left: 4px solid #F59E0B; }
+    .moderate   { border-left: 4px solid #10B981; }
+    .minor      { border-left: 4px solid #6B7280; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 p-4">
+  <header class="mb-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-xl font-bold text-blue-700">Inspark A11y Assistant</h1>
+      <div class="flex space-x-2">
+        <button
+          id="scanBtn"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+        >
+          Scan Page
+        </button>
+        <button
+          id="globalScanBtn"
+          class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+        >
+          Global Scan
+        </button>
+        <button
+          id="exportBtn"
+          class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-md text-sm font-medium"
+          disabled
+        >
+          Export
+        </button>
+      </div>
+    </div>
+    <div id="scanStatus" class="text-sm text-gray-500 mt-1 hidden">
+      Scanning page...
+    </div>
+    <div id="globalStatus" class="text-sm text-gray-500 mt-1 hidden">
+      Global scan in progress...
+    </div>
+  </header>
+
+  <!-- Per-page results -->
+  <div id="resultsContainer" class="hidden">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Results</h2>
+      <div class="text-sm">
+        <span id="issueCount" class="font-medium">0</span> issues found
+      </div>
+    </div>
+    <div class="mb-4">
+      <div class="flex space-x-2 text-sm">
+        <button
+          class="filter-btn bg-white border border-gray-300 px-3 py-1 rounded-md"
+          data-filter="all"
+        >All</button>
+        <button
+          class="filter-btn bg-white border border-gray-300 px-3 py-1 rounded-md"
+          data-filter="a11y"
+        >Accessibility</button>
+        <button
+          class="filter-btn bg-white border border-gray-300 px-3 py-1 rounded-md"
+          data-filter="uiux"
+        >UI/UX</button>
+      </div>
+    </div>
+    <div id="issuesList" class="space-y-3">
+      <div class="text-center text-gray-500 py-8">
+        Click "Scan Page" to begin analysis
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="emptyState" class="text-center py-12">
+    <div class="text-gray-400 mb-4">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-16 w-16 mx-auto"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+      </svg>
+    </div>
+    <h3 class="text-lg font-medium text-gray-700">Ready to analyze</h3>
+    <p class="text-gray-500 mt-1">
+      Click a button above to check accessibility and UI/UX issues
+    </p>
+  </div>
+
+  <!-- Global results -->
+  <div id="globalResultsContainer" class="hidden p-4 bg-white rounded-md shadow-sm">
+    <h2 class="text-lg font-semibold mb-2">Global Scan Results</h2>
+    <!-- Aggregated per-URL counts will appear here -->
+  </div>
+
+  <!-- Issue detail modal -->
+  <div
+    id="issueDetail"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden"
+  >
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
+      <div class="flex justify-between items-start mb-4">
+        <h3 id="detailTitle" class="text-lg font-semibold"></h3>
+        <button id="closeDetail" class="text-gray-500 hover:text-gray-700">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div id="detailContent"></div>
+      <div class="mt-6 pt-4 border-t border-gray-200">
+        <h4 class="font-medium mb-2">AI Recommendation</h4>
+        <div id="aiSuggestion" class="text-sm bg-blue-50 p-3 rounded-md"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load your popup script normally (no module) -->
+  <script src="src/popup.js"></script>
+</body>
+</html>
