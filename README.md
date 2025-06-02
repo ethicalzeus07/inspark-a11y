@@ -1,6 +1,5 @@
 # Inspark AI-Powered Accessibility & UI/UX Testing Assistant
 
-![Inspark Logo](https://user-images.githubusercontent.com/your-placeholder/logo.png)
 
 > "Scan course content. Spot accessibility issues. Get AI-powered fixes."
 
