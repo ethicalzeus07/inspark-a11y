@@ -1,96 +1,142 @@
 # Inspark AI-Powered Accessibility & UI/UX Testing Assistant
 
-This project implements a browser extension and AI microservice for automated discovery of accessibility issues and UI/UX anomalies in Inspark Online Courses.
+![Inspark Logo](https://user-images.githubusercontent.com/your-placeholder/logo.png)
 
-## Project Structure
+> "Scan course content. Spot accessibility issues. Get AI-powered fixes."
 
-```
+This project is a Chrome extension and AI backend that helps testers identify and fix accessibility + UI/UX problems across Inspark online courses. Built with FastAPI, axe-core, and DeepSeek AI.
+
+---
+
+## 📁 Project Structure
+
+```bash
 inspark-a11y-assistant/
-├── extension/             # Browser extension (Chrome/Edge/Firefox)
-│   ├── assets/            # Icons and images
-│   ├── public/            # Public static files
-│   ├── src/               # Source code
-│   │   ├── api.js         # API service for microservice communication
-│   │   ├── background.js  # Extension background script
-│   │   ├── config.js      # Configuration settings
-│   │   ├── content.js     # Content script for page analysis
-│   │   └── popup.js       # Popup UI script
-│   ├── manifest.json      # Extension manifest
-│   └── popup.html         # Extension popup UI
+├── extension/             # Browser extension
+│   ├── axe.min.js         # Accessibility engine (axe-core)
+│   ├── popup.html         # Tailwind-based popup UI
+│   └── src/
+│       ├── api.js         # API bridge
+│       ├── background.js  # Service worker
+│       ├── config.js      # Environment + defaults
+│       ├── content.js     # Axe scan + UI/UX metrics
+│       └── popup.js       # UI logic
 │
-└── microservice/          # AI suggestion microservice
-    ├── app/               # FastAPI application
-    │   ├── core/          # Core functionality
-    │   │   └── suggestions.json  # Predefined suggestions
-    │   ├── models/        # Data models
-    │   ├── routers/       # API routes
-    │   ├── utils/         # Utility functions
-    │   └── main.py        # Main application entry point
-    ├── docs/              # Documentation
-    └── tests/             # Test suite
+└── microservice/          # AI Suggestion backend
+    ├── app/
+    │   ├── main.py        # FastAPI app (AI + rules)
+    │   └── core/suggestions.json  # Predefined fallback text
+    ├── requirements.txt
+    └── docker-compose.yml
 ```
 
-## Features
+---
 
-- One-click accessibility and UI/UX scanning
-- WCAG 2.2 AA compliance checking
-- AI-powered suggestions for fixing issues
-- Inline highlighting of problematic elements
-- Exportable HTML/PDF reports
-- Session history for offline review
+## ✨ Features
 
-## Getting Started
+* One-click WCAG 2.2 A/AA scan (via axe-core)
+* Detects real UI/UX issues:
 
-### Extension Setup
+  * Touch targets < 44x44px
+  * Body text < 16px
+  * Viewport overflow
+  * CLS, LCP, INP (via web-vitals)
+* AI-powered suggestions via OpenRouter / DeepSeek (Mistral 7B)
+* Supports **multiple API keys** (auto fallback)
+* Popup UI: filter, preview, export, and highlight
+* Offline HTML report export
 
-1. Open Chrome/Edge and navigate to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked" and select the `extension` directory
-4. The extension icon should appear in your toolbar
+---
 
-### Microservice Setup
+## 🚀 Quick Start
 
-1. Navigate to the `microservice` directory
-2. Create a virtual environment: `python -m venv venv`
-3. Activate the virtual environment:
-   - Windows: `venv\Scripts\activate`
-   - macOS/Linux: `source venv/bin/activate`
-4. Install dependencies: `pip install -r requirements.txt`
-5. Start the server: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+### 🔌 Install the Extension
 
-## Usage
+1. Visit `chrome://extensions`
+2. Enable **Developer Mode**
+3. Click **Load unpacked** → select `extension/`
+4. The extension icon will appear
 
-1. Navigate to an Inspark course page
-2. Click the extension icon in the toolbar
-3. Click "Scan Page" to analyze the current page
-4. Review issues in the popup panel
-5. Hover over issues to highlight them on the page
-6. Click an issue to see details and AI recommendations
-7. Click "Export" to generate a shareable report
+### 🧠 Start the AI Microservice
 
-## Development
+```bash
+cd microservice/
+python -m venv venv
+source venv/bin/activate     # or `venv\Scripts\activate` on Windows
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
 
-### Extension Development
+Create a `.env` file with your API key(s):
 
-- The extension uses vanilla JavaScript with Tailwind CSS
-- Background script handles API communication and report generation
-- Content script performs accessibility scanning with axe-core
-- Popup script manages the user interface
+```env
+OPENROUTER_API_KEY=key1,key2,key3
+```
 
-### Microservice Development
+---
 
-- Built with FastAPI for high-performance API endpoints
-- Supports AI-powered suggestion generation
-- Includes caching to minimize redundant API calls
-- Designed for containerization with Docker
+## 🧪 How It Works
 
-## License
+![Scan Demo](https://user-images.githubusercontent.com/your-placeholder/scan-demo.gif)
 
-This project is proprietary and confidential to Inspark Online Courses.
+1. Visit any course page
+2. Click the **Inspark A11y** icon
+3. Click **Scan** → gets a11y + UI/UX results
+4. Hover = highlight element
+5. Click = see full details + AI fix
+6. Export = save full HTML report
 
-## Next Steps
+---
 
-1. Complete Docker configuration for microservice
-2. Add PII protection features
-3. Implement automated testing
-4. Deploy to production environment
+## 🧰 Tech Stack
+
+| Layer          | Stack Used                        |
+| -------------- | --------------------------------- |
+| Extension      | JS, Tailwind, Chrome APIs         |
+| A11y Engine    | `axe-core`                        |
+| UX Metrics     | `web-vitals` (CLS, INP, LCP)      |
+| AI Suggestions | FastAPI + OpenRouter (Mistral 7B) |
+
+---
+
+## 🔐 Security
+
+* PII redaction placeholder (`detect_and_redact_pii()`)
+* No raw HTML or DOM leaks to external APIs
+* API key rotation prevents burnouts
+
+---
+
+## 🛠 Next Improvements
+
+* [ ] PDF export with branding
+* [ ] Smart screenshots (DOM highlight)
+* [ ] Local AI fallback (e.g., Mistral via Ollama)
+* [ ] Global scan aggregation dashboard
+
+---
+
+## 📄 License
+
+This project is proprietary and confidential to **Inspark Online Courses**. Do not distribute.
+
+---
+
+## 📸 Screenshots
+
+<table>
+<tr>
+<td><img src="https://user-images.githubusercontent.com/your-placeholder/summary.png" width="280"/></td>
+<td><img src="https://user-images.githubusercontent.com/your-placeholder/issue-detail.png" width="280"/></td>
+<td><img src="https://user-images.githubusercontent.com/your-placeholder/report-export.png" width="280"/></td>
+</tr>
+<tr>
+<td align="center">Scan Summary</td>
+<td align="center">AI Suggestion Modal</td>
+<td align="center">HTML Report</td>
+</tr>
+</table>
+
+---
+
+> Built with ❤️ by Inspark's Support & Engineering Teams
