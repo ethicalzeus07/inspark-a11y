@@ -1,7 +1,6 @@
 // background.js – Inspark A11y Assistant
 // ─────────────────────────────────────────────────────────────────
 // This file must be loaded with `"type": "module"` in your manifest.
-// See note below on updating manifest.json.
 
 import { apiService } from "./api.js";
 import { config, debugLog } from "./config.js";
@@ -37,7 +36,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
             suggestion: "Unable to generate suggestion at this time."
           });
         });
-      // no sendResponse → we’re using chrome.runtime.sendMessage back
       return false;
 
     // B. Export a static HTML report
@@ -47,14 +45,13 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         .catch(err => console.error("Error generating report:", err));
       return false;
 
-    // C. Health-check (we WILL call sendResponse, so we return true)
+    // C. Health-check
     case "checkApiHealth":
       apiService.checkHealth()
         .then(isHealthy => sendResponse({ isHealthy }))
         .catch(err => sendResponse({ isHealthy: false, error: err.message }));
       return true;
 
-    // D. Unrecognized
     default:
       return false;
   }
@@ -110,31 +107,38 @@ function createReportHtml(results, tab) {
   }
 
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Report – ${tab.title}</title><style>
-  /* … your CSS from before … */
-</style></head><body>
-<header>
-  <h1>Accessibility & UI/UX Report</h1>
-  <div><strong>Page:</strong> ${tab.title}</div>
-  <div><strong>URL:</strong> ${tab.url}</div>
-  <div><strong>Date:</strong> ${date}</div>
-</header>
-<section>
-  <h2>Summary</h2>
-  <div><strong>Total:</strong> ${results.length}</div>
-  <div><strong>Accessibility:</strong> ${a11y.length}</div>
-  <div><strong>UI/UX:</strong> ${uiux.length}</div>
-  <div><strong>Critical:</strong> ${bySeverity("critical")}</div>
-  <div><strong>Serious:</strong> ${bySeverity("serious")}</div>
-  <div><strong>Moderate:</strong> ${bySeverity("moderate")}</div>
-  <div><strong>Minor:</strong> ${bySeverity("minor")}</div>
-</section>
-<section>
-  <h2>Accessibility Issues</h2>
-  ${a11y.length ? a11y.map(issueHtml).join("") : "<p>None</p>"}
-  <h2>UI/UX Issues</h2>
-  ${uiux.length ? uiux.map(issueHtml).join("") : "<p>None</p>"}
-</section>
-</body></html>`;
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Report – ${tab.title}</title>
+  <style>
+    /* … your CSS from before … */
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Accessibility & UI/UX Report</h1>
+    <div><strong>Page:</strong> ${tab.title}</div>
+    <div><strong>URL:</strong> ${tab.url}</div>
+    <div><strong>Date:</strong> ${date}</div>
+  </header>
+  <section>
+    <h2>Summary</h2>
+    <div><strong>Total:</strong> ${results.length}</div>
+    <div><strong>Accessibility:</strong> ${a11y.length}</div>
+    <div><strong>UI/UX:</strong> ${uiux.length}</div>
+    <div><strong>Critical:</strong> ${bySeverity("critical")}</div>
+    <div><strong>Serious:</strong> ${bySeverity("serious")}</div>
+    <div><strong>Moderate:</strong> ${bySeverity("moderate")}</div>
+    <div><strong>Minor:</strong> ${bySeverity("minor")}</div>
+  </section>
+  <section>
+    <h2>Accessibility Issues</h2>
+    ${a11y.length ? a11y.map(issueHtml).join("") : "<p>None</p>"}
+    <h2>UI/UX Issues</h2>
+    ${uiux.length ? uiux.map(issueHtml).join("") : "<p>None</p>"}
+  </section>
+</body>
+</html>`;
 }

@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 import os
-import json
 from datetime import datetime
 import hashlib
 import requests
@@ -76,8 +75,13 @@ def fastapi_suggestion(issue: IssueRequest) -> str:
             "default": "Review WCAG guidelines for accessibility compliance.",
         },
         "uiux": {
-            "touch-target-size": "Make sure clickable elements are at least 44x44px.",
-            "default": "Follow responsive/mobile-first best practices.",
+            "touch-target-size": "Increase touch target to at least 44×44 px so users can tap easily.",
+            "font-size-too-small": "Boost text size to at least 16 px for readability.",
+            "viewport-width": "Ensure content fits within the viewport to avoid horizontal scrolling.",
+            "layout-shift": "Reduce layout shifts by reserving image space and avoiding late DOM changes.",
+            "lcp": "Optimize largest contentful paint by deferring unused CSS and images.",
+            "inp": "Improve interactivity by reducing JavaScript blocking time below 200 ms.",
+            "default": "Follow Inspark UI/UX guidelines to ensure a smooth user experience.",
         }
     }
     return (
@@ -86,46 +90,61 @@ def fastapi_suggestion(issue: IssueRequest) -> str:
         or "Review accessibility and UI/UX best practices."
     )
 
-# ─── OpenRouter/DeepSeek Suggestion ───
+# ─── OpenRouter/DeepSeek Suggestion with Multiple API Key Support ───
 def call_deepseek_openrouter(issue: IssueRequest) -> str:
-    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-    if not openrouter_api_key:
+    raw_keys = os.getenv("OPENROUTER_API_KEY", "")
+    all_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+    if not all_keys:
         raise HTTPException(status_code=500, detail="OpenRouter API key not configured.")
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {openrouter_api_key}",
-        "Content-Type": "application/json",
-    }
+    # Shorten description to first 100 characters
+    short_desc = issue.issueDescription
+    if len(short_desc) > 100:
+        short_desc = short_desc[:100] + "…"
+
+    # Shorten HTML element to first 80 characters
+    short_elem = issue.element
+    if len(short_elem) > 80:
+        short_elem = short_elem[:80] + "…"
+
+    # Build a concise prompt asking for a brief recommendation
     prompt = (
-        "You are an accessibility and UI/UX expert. "
-        "Given the following issue, suggest a specific, actionable fix:\n"
+        "You are an accessibility and UI/UX expert. Give a very brief fix (under 30 words).\n"
         f"Issue Type: {issue.issueType}\n"
         f"Severity: {issue.severity}\n"
-        f"Description: {issue.issueDescription}\n"
-        f"HTML Element: {issue.element}\n"
-        "Return just the recommendation."
+        f"Description (short): {short_desc}\n"
+        f"HTML Element (short): {short_elem}\n"
+        "Return only the recommendation."
     )
-    payload = {
-        "model": "deepseek/deepseek-r1-0528:free",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = { "Content-Type": "application/json" }
+    payload_template = {
+        "model": "mistralai/mistral-7b-instruct:free",
+        "messages": [ { "role": "user", "content": prompt } ]
     }
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        resp.raise_for_status()
-        out = resp.json()
-        if (
-            "choices" in out and len(out["choices"]) > 0 and
-            "message" in out["choices"][0] and
-            "content" in out["choices"][0]["message"]
-        ):
-            return out["choices"][0]["message"]["content"].strip()
-        return "Sorry, could not generate an AI suggestion."
-    except Exception as e:
-        logger.error(f"DeepSeek API error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get AI suggestion from DeepSeek/OpenRouter.")
+
+    last_error = None
+    for key in all_keys:
+        headers["Authorization"] = f"Bearer {key}"
+        try:
+            resp = requests.post(url, headers=headers, json=payload_template, timeout=30)
+            resp.raise_for_status()
+            out = resp.json()
+            if (
+                "choices" in out and len(out["choices"]) > 0 and
+                "message" in out["choices"][0] and
+                "content" in out["choices"][0]["message"]
+            ):
+                return out["choices"][0]["message"]["content"].strip()
+            return "Sorry, could not generate an AI suggestion."
+        except Exception as e:
+            last_error = e
+            logger.warning(f"OpenRouter key failed: {key} → {e}")
+            continue
+
+    logger.error(f"All API keys failed: {last_error}")
+    raise HTTPException(status_code=500, detail="All OpenRouter keys failed or are exhausted.")
 
 # ─── Routes ───
 

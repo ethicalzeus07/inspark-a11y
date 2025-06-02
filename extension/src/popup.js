@@ -30,10 +30,24 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeFilter      = 'all';
   let currentIssueForAi = null;
 
+  // Prettify function: ensure sentence ends with period
+  function prettifyDescription(raw) {
+    if (!raw) return '';
+    let text = raw.trim();
+    if (!text.endsWith('.')) {
+      text += '.';
+    }
+    return text;
+  }
+
   // Load last scan from storage
   chrome.storage.local.get(['lastScanResults'], ({ lastScanResults }) => {
     if (lastScanResults) {
-      currentResults = lastScanResults;
+      // Prettify descriptions before rendering
+      currentResults = lastScanResults.map(issue => ({
+        ...issue,
+        description: prettifyDescription(issue.description)
+      }));
       updateResultsView();
     }
   });
@@ -67,7 +81,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const suggestion = await apiService.getDeepSeekSuggestion(currentIssueForAi);
-      deepseekAiSuggestion.textContent = suggestion;
+      // Shorten the AI suggestion text if it’s too long
+      let shortSug = suggestion;
+      if (shortSug.length > 200) {
+        shortSug = shortSug.slice(0, 200) + "…";
+      }
+      deepseekAiSuggestion.textContent = shortSug;
+
+      // Log AI suggestion in currentResults and storage
+      const idx = currentResults.findIndex(i => i.id === currentIssueForAi.id);
+      if (idx > -1) {
+        currentResults[idx].aiSuggestion = suggestion;
+        chrome.storage.local.set({ lastScanResults: currentResults });
+      }
     } catch {
       deepseekAiSuggestion.textContent = 'Could not get AI suggestion.';
     }
@@ -126,8 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
     globalResultsContainer.classList.add('hidden');
     scanStatus.classList.add('hidden');
     scanBtn.disabled = exportBtn.disabled = globalScanBtn.disabled = false;
-    currentResults = results;
-    chrome.storage.local.set({ lastScanResults: results });
+    // Prettify descriptions before saving
+    currentResults = results.map(issue => ({
+      ...issue,
+      description: prettifyDescription(issue.description)
+    }));
+    chrome.storage.local.set({ lastScanResults: currentResults });
     updateResultsView();
   }
 

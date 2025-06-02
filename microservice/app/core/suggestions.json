@@ -17,9 +17,12 @@
     "touch-target-size": "Increase the touch target size to at least 44x44 pixels to ensure it's easily tappable on mobile devices. This is especially important for interactive elements that students will use frequently.",
     "content-overflow": "Implement responsive design techniques to ensure content adapts to different screen sizes. Consider using CSS media queries and flexible layouts to prevent horizontal scrolling on small screens.",
     "font-size-too-small": "Increase the font size to at least 16px (or 1rem) for body text to ensure readability across devices. For educational content, consider using slightly larger text (18px) for improved readability during extended study sessions.",
-    "element-overlap": "Fix the overlapping elements by adjusting positioning, margins, or layout. Ensure that all content is fully visible and accessible at all viewport sizes.",
+    "element-overlap": "Fix overlapping elements by adjusting positioning, margins, or layout. Ensure that all content is fully visible and accessible at all viewport sizes.",
     "fixed-header-obscuring": "Adjust the fixed header implementation to ensure it doesn't obscure important content when users scroll. Consider adding sufficient padding-top to the content area or implementing a more sophisticated scroll behavior.",
     "viewport-width": "Ensure all content fits within the viewport width without requiring horizontal scrolling. Use responsive techniques like percentage-based widths, max-width, and flexible images.",
+    "layout-shift": "Reduce layout shifts by reserving space for images, avoiding late DOM insertions, and using CSS transform/opacity instead of layout-changing properties.",
+    "lcp": "Optimize the largest contentful paint by lazy-loading below-the-fold images, minifying CSS, and deferring non-critical JavaScript to improve perceived load speed.",
+    "inp": "Improve interactivity by minimizing main-thread work, breaking up long tasks, and using requestIdleCallback to ensure interaction handlers respond in under 200ms.",
     "default": "Follow Inspark mobile guidelines to ensure consistent user experience across devices. Remember that students may access course content on a wide variety of devices and in different environments."
   }
 }

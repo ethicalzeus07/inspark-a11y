@@ -1,235 +1,327 @@
 // content.js – Inspark A11y Assistant
 // Runs inside every page the tester opens.
 
-// ===== 1. State =====
+/* ------------------------------------------------------------------ *
+   1.  STATE
+/* ------------------------------------------------------------------ */
 let highlightedElements = [];
-let observer = null;
-// Only run in the top window, not in child iframes
-function isTopFrame() {
-  return window.self === window.top;
-}
+let observer            = null;
 
+// Will collect live UI/UX issues if web-vitals loads successfully
+let liveUiIssues = [];
 
-// ===== 2. Listen for messages from popup =====
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  if (request.action === "startScan" && !isTopFrame()) {
-    sendResponse({ status: "ignored frame" });
-    return;  // don’t kick off the scan here
-  }
-  switch (request.action) {
+/* ------------------------------------------------------------------ *
+   2.  (OPTIONAL) LOAD web-vitals WITH DYNAMIC import()
+       – keeps classic content-script compatible
+/* ------------------------------------------------------------------ */
+(async () => {
+  try {
+    const { onCLS, onLCP, onINP } =
+      await import('https://unpkg.com/web-vitals?module');
 
-    // ----- Per-page scan -----
-    case "startScan":
-      console.log("💬 content.js → received startScan");
-      performAccessibilityScan()
-        .then(results => {
-          chrome.runtime.sendMessage({ action: "scanComplete", results });
-        })
-        .catch(err => {
-          chrome.runtime.sendMessage({ action: "scanError", error: err.message });
+    // CLS – Cumulative Layout Shift
+    onCLS(metric => {
+      if (metric.value > 0.1) {
+        liveUiIssues.push({
+          id: 'layout-shift',
+          impact: 'moderate',
+          nodes: [{
+            html: `<span>CLS: ${metric.value.toFixed(3)}</span>`,
+            target: [],
+            failureSummary:
+              `Cumulative Layout Shift is ${metric.value.toFixed(3)}, which exceeds 0.1.`
+          }]
         });
-      sendResponse({ status: "scan started" });
-      return true;   // don’t keep channel open
+      }
+    });
 
-    // ----- Global scan (accumulates by URL) -----
-    case "startGlobalScan":
+    // LCP – Largest Contentful Paint
+    onLCP(metric => {
+      if (metric.value > 2500) {
+        liveUiIssues.push({
+          id: 'lcp',
+          impact: 'serious',
+          nodes: [{
+            html: `<span>LCP: ${Math.round(metric.value)}ms</span>`,
+            target: [],
+            failureSummary:
+              `Largest Contentful Paint took ${Math.round(metric.value)} ms (above 2500 ms).`
+          }]
+        });
+      }
+    });
+
+    // INP – Interaction to Next Paint
+    onINP(metric => {
+      if (metric.value > 200) {
+        liveUiIssues.push({
+          id: 'inp',
+          impact: 'serious',
+          nodes: [{
+            html: `<span>INP: ${Math.round(metric.value)}ms</span>`,
+            target: [],
+            failureSummary:
+              `Interaction to Next Paint is ${Math.round(metric.value)} ms (above 200 ms).`
+          }]
+        });
+      }
+    });
+
+    console.log('[Inspark] web-vitals loaded');
+  } catch (e) {
+    // Could be blocked by CSP or network—fail gracefully
+    console.warn('[Inspark] web-vitals unavailable, skipping live UX metrics', e);
+  }
+})();
+
+/* ------------------------------------------------------------------ *
+   3.  MESSAGE ROUTER  (popup → content)
+/* ------------------------------------------------------------------ */
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  // Ignore scans inside iframes
+  if (!isTopFrame() && request.action === 'startScan') {
+    sendResponse({ status: 'ignored frame' });
+    return;
+  }
+
+  switch (request.action) {
+    case 'startScan':
+      performAccessibilityScan()
+        .then(results =>
+          chrome.runtime.sendMessage({ action: 'scanComplete', results }))
+        .catch(err =>
+          chrome.runtime.sendMessage({ action: 'scanError', error: err.message }));
+      sendResponse({ status: 'scan started' });
+      return true; // async
+
+    case 'startGlobalScan':
       performAccessibilityScan()
         .then(async results => {
-          const url = window.location.href;
-          // Fetch existing globalResults
-          const { globalResults = {} } = await chrome.storage.local.get("globalResults");
-          // Store this page’s results
+          const url = location.href;
+          const { globalResults = {} } = await chrome.storage.local.get('globalResults');
           globalResults[url] = results;
           await chrome.storage.local.set({ globalResults });
-          // Send back the entire collection
-          chrome.runtime.sendMessage({ action: "globalScanComplete", globalResults });
+          chrome.runtime.sendMessage({ action: 'globalScanComplete', globalResults });
         })
-        .catch(err => {
-          chrome.runtime.sendMessage({ action: "scanError", error: err.message });
-        });
-      sendResponse({ status: "global scan started" });
-      return true;   // don’t keep channel open
+        .catch(err =>
+          chrome.runtime.sendMessage({ action: 'scanError', error: err.message }));
+      sendResponse({ status: 'global scan started' });
+      return true;
 
-    // ----- Highlight / remove highlight helpers -----
-    case "highlightElement":
+    case 'highlightElement':
       highlightElement(request.selector);
-      sendResponse({ status: "highlighting" });
+      sendResponse({ status: 'highlighting' });
       break;
 
-    case "removeHighlight":
+    case 'removeHighlight':
       removeHighlights();
-      sendResponse({ status: "highlights removed" });
+      sendResponse({ status: 'highlights removed' });
       break;
   }
 });
 
-// ===== 3. Main scan routine =====
+/* ------------------------------------------------------------------ *
+   4.  MAIN SCAN ROUTINE
+/* ------------------------------------------------------------------ */
 async function performAccessibilityScan() {
-  // 10% → we’ve started
-  chrome.runtime.sendMessage({ action: "scanProgress", progress: 10 });
-  console.log("📊 content.js → sent scanProgress 10");
+  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 10 });
 
-  // Run axe
   const axeResults = await runAxeAnalysis();
+  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 50 });
 
-  // 50% → axe finished
-  chrome.runtime.sendMessage({ action: "scanProgress", progress: 50 });
-  console.log("📊 content.js → sent scanProgress 50");
-
-  // Run UI/UX mocks
   const uiuxResults = await runUiUxChecks();
+  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 90 });
 
-  // 90% → custom checks done
-  chrome.runtime.sendMessage({ action: "scanProgress", progress: 90 });
-  console.log("📊 content.js → sent scanProgress 90");
-
-  // Combine & finish
   const combined = formatResults(axeResults, uiuxResults);
-
-  // 100% → all done
-  chrome.runtime.sendMessage({ action: "scanProgress", progress: 100 });
-  console.log("📊 content.js → sent scanProgress 100");
+  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 100 });
 
   return combined;
 }
 
-
-// ===== 4. Run axe-core analysis =====
+/* ------------------------------------------------------------------ *
+   5.  AXE ANALYSIS  (WCAG A/AA)
+/* ------------------------------------------------------------------ */
 function runAxeAnalysis() {
   return new Promise((resolve, reject) => {
     axe.run(
       document,
       {
         iframes: false,
-        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] }
       },
-      (err, results) => err ? reject(err) : resolve(results)
+      (err, results) => (err ? reject(err) : resolve(results))
     );
   });
 }
 
-// ===== 5. Mock UI/UX checks =====
-function runUiUxChecks() {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve([
-        {
-          id: "touch-target-size",
-          impact: "moderate",
-          nodes: [{
-            html: '<a href="#" class="small-link">Small link</a>',
-            target: ["a.small-link"],
-            failureSummary: "Touch target size is too small (24×20px); should be ≥44×44px"
-          }]
-        },
-        {
-          id: "content-overflow",
-          impact: "minor",
-          nodes: [{
-            html: '<div class="content-box" style="width:320px;overflow:hidden;">Overflow</div>',
-            target: ["div.content-box"],
-            failureSummary: "Content may overflow on small screens (320 px)"
-          }]
-        }
-      ]);
-    }, 500);
-  });
-}
-
-// ===== 6. Format combined results =====
-function formatResults(axeResults, uiuxResults) {
+/* ------------------------------------------------------------------ *
+   6.  UI/UX CHECKS  (touch-target, font-size, overflow) + live metrics
+/* ------------------------------------------------------------------ */
+async function runUiUxChecks() {
   const issues = [];
-  let counter = 1;
 
-  axeResults.violations.forEach(v =>
-    v.nodes.forEach(n => issues.push({
-      id:          `issue-${counter++}`,
-      title:       getViolationTitle(v.id),
-      description: n.failureSummary,
-      element:     n.html,
-      selector:    n.target[0],
-      severity:    mapImpactToSeverity(v.impact),
-      category:    "a11y",
-      type:        v.id,
-      screenshot:  null,
-      aiSuggestion:null
-    }))
-  );
+  /* 6-a Touch target */
+  const clickables =
+    ['a', 'button', 'input[type="button"]', 'input[type="submit"]'];
+  document.querySelectorAll(clickables.join(',')).forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 44 || r.height < 44) {
+      issues.push({
+        id: 'touch-target-size',
+        impact: 'moderate',
+        nodes: [{
+          html: el.outerHTML,
+          target: [simpleSelector(el)],
+          failureSummary:
+            `Touch target ${Math.round(r.width)}×${Math.round(r.height)} px; needs ≥44×44 px.`
+        }]
+      });
+    }
+  });
 
-  uiuxResults.forEach(u =>
-    u.nodes.forEach(n => issues.push({
-      id:          `issue-${counter++}`,
-      title:       getUiUxIssueTitle(u.id),
-      description: n.failureSummary,
-      element:     n.html,
-      selector:    n.target[0],
-      severity:    mapImpactToSeverity(u.impact),
-      category:    "uiux",
-      type:        u.id,
-      screenshot:  null,
-      aiSuggestion:null
-    }))
-  );
+  /* 6-b Font size */
+  const bodyFont = parseFloat(getComputedStyle(document.body).fontSize);
+  if (bodyFont < 16) {
+    issues.push({
+      id: 'font-size-too-small',
+      impact: 'minor',
+      nodes: [{
+        html: 'body',
+        target: ['body'],
+        failureSummary: `Body font-size ${bodyFont}px; recommended ≥16 px.`
+      }]
+    });
+  }
+
+  /* 6-c Horizontal overflow */
+  if (document.documentElement.scrollWidth > innerWidth) {
+    issues.push({
+      id: 'viewport-width',
+      impact: 'minor',
+      nodes: [{
+        html: '',
+        target: [],
+        failureSummary:
+          `Content width ${document.documentElement.scrollWidth}px exceeds viewport ${innerWidth}px.`
+      }]
+    });
+  }
+
+  /* 6-d merge live web-vitals issues (if any) */
+  issues.push(...liveUiIssues);
+  liveUiIssues = [];
 
   return issues;
 }
 
-// ===== 7. Helpers =====
-function mapImpactToSeverity(impact) {
-  const map = { critical: "critical", serious: "serious", moderate: "moderate", minor: "minor" };
-  return map[impact] || "moderate";
+/* ------------------------------------------------------------------ *
+   7.  UTILS & FORMATTERS
+/* ------------------------------------------------------------------ */
+function simpleSelector(el) {
+  let sel = el.tagName.toLowerCase();
+  if (el.className) {
+    const c = el.className.trim().split(/\s+/).join('.');
+    if (c) sel += `.${c}`;
+  }
+  return sel;
 }
 
-function getViolationTitle(id) {
-  const titles = {
-    "color-contrast":       "Insufficient Color Contrast",
-    "image-alt":            "Missing Image Alt Text",
-    "aria-required-attr":   "Missing Required ARIA Attributes",
-    "aria-roles":           "Invalid ARIA Role",
-    "button-name":          "Button Has No Discernible Text",
-    "document-title":       "Document Must Have Title",
-    "duplicate-id":         "Duplicate ID Attribute",
-    "frame-title":          "Frame Missing Title",
-    "html-has-lang":        "HTML Element Missing Lang Attribute",
-    "label":                "Form Element Has No Label",
-    "link-name":            "Link Has No Discernible Text"
+function mapImpact(impact) {
+  return { critical: 'critical', serious: 'serious',
+           moderate: 'moderate', minor: 'minor' }[impact] || 'moderate';
+}
+
+function axeTitle(id) {
+  const t = {
+    'color-contrast': 'Insufficient Color Contrast',
+    'image-alt':      'Missing Image Alt Text',
+    'aria-required-attr': 'Missing Required ARIA Attributes',
+    'aria-roles':     'Invalid ARIA Role',
+    'button-name':    'Button Has No Discernible Text',
+    'document-title': 'Document Must Have Title',
+    'duplicate-id':   'Duplicate ID Attribute',
+    'frame-title':    'Frame Missing Title',
+    'html-has-lang':  'HTML Element Missing Lang Attribute',
+    'label':          'Form Element Has No Label',
+    'link-name':      'Link Has No Discernible Text'
   };
-  return titles[id] || `Accessibility Issue: ${id}`;
+  return t[id] || `Accessibility Issue: ${id}`;
 }
 
-function getUiUxIssueTitle(id) {
-  const titles = {
-    "touch-target-size":     "Touch Target Too Small",
-    "content-overflow":      "Content Overflow on Small Screens",
-    "font-size-too-small":   "Font Size Too Small",
-    "element-overlap":       "Overlapping Elements",
-    "fixed-header-obscuring":"Fixed Header Obscures Content",
-    "viewport-width":        "Content Wider Than Viewport"
+function uxTitle(id) {
+  const t = {
+    'touch-target-size':  'Touch Target Too Small',
+    'content-overflow':   'Content Overflow on Small Screens',
+    'font-size-too-small':'Font Size Too Small',
+    'element-overlap':    'Overlapping Elements',
+    'fixed-header-obscuring':'Fixed Header Obscures Content',
+    'viewport-width':     'Content Wider Than Viewport',
+    'layout-shift':       'Layout Instability (CLS)',
+    'lcp':                'Largest Contentful Paint Too Slow',
+    'inp':                'Slow Interaction (INP)'
   };
-  return titles[id] || `UI/UX Issue: ${id}`;
+  return t[id] || `UI/UX Issue: ${id}`;
 }
 
-// ===== 8. Highlight helpers =====
+/* ------------------------------------------------------------------ *
+   8.  COMBINE RESULTS
+/* ------------------------------------------------------------------ */
+function formatResults(axeRes, uxRes) {
+  const issues = [];
+  let id = 1;
+
+  axeRes.violations.forEach(v =>
+    v.nodes.forEach(n => issues.push({
+      id:          `issue-${id++}`,
+      title:       axeTitle(v.id),
+      description: n.failureSummary,
+      element:     truncate(n.html, 80),
+      selector:    n.target[0],
+      severity:    mapImpact(v.impact),
+      category:    'a11y',
+      type:        v.id,
+      screenshot:  null,
+      aiSuggestion:null
+    })));
+
+  uxRes.forEach(u =>
+    u.nodes.forEach(n => issues.push({
+      id:          `issue-${id++}`,
+      title:       uxTitle(u.id),
+      description: n.failureSummary,
+      element:     truncate(n.html, 80),
+      selector:    n.target[0] || '',
+      severity:    mapImpact(u.impact),
+      category:    'uiux',
+      type:        u.id,
+      screenshot:  null,
+      aiSuggestion:null
+    })));
+
+  return issues;
+}
+
+const truncate = (str, max) =>
+  (str && str.length > max) ? str.slice(0, max) + '…' : str;
+
+/* ------------------------------------------------------------------ *
+   9.  HIGHLIGHT HELPERS
+/* ------------------------------------------------------------------ */
 function highlightElement(selector) {
   removeHighlights();
   document.querySelectorAll(selector).forEach(el => {
-    const r = el.getBoundingClientRect();
-    const hl = document.createElement("div");
-    hl.className = "inspark-a11y-highlight";
+    const r  = el.getBoundingClientRect();
+    const hl = document.createElement('div');
+    hl.className = 'inspark-a11y-highlight';
     hl.style.cssText = `
       position: absolute;
-      left: ${window.scrollX + r.left}px;
-      top:  ${window.scrollY + r.top}px;
-      width: ${r.width}px;
-      height:${r.height}px;
-      border:2px solid #3B82F6;
-      background:rgba(59,130,246,0.1);
-      z-index:9999;
-      pointer-events:none;
-    `;
+      left:${scrollX + r.left}px; top:${scrollY + r.top}px;
+      width:${r.width}px; height:${r.height}px;
+      border:2px solid #3B82F6; background:rgba(59,130,246,0.1);
+      z-index:9999; pointer-events:none;`;
     document.body.appendChild(hl);
     highlightedElements.push(hl);
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 }
 
@@ -238,18 +330,18 @@ function removeHighlights() {
   highlightedElements = [];
 }
 
-// ===== 9. Init =====
+/* ------------------------------------------------------------------ *
+   10.  INIT
+/* ------------------------------------------------------------------ */
 (function init() {
-  console.log("Inspark Accessibility Assistant content script loaded");
-  const s = document.createElement("style");
-  s.textContent = `
-    .inspark-a11y-highlight {
-      transition: all .2s ease-in-out;
-      pointer-events: none;
-    }
-  `;
+  console.log('[Inspark] content script loaded');
+  const s = document.createElement('style');
+  s.textContent = `.inspark-a11y-highlight{transition:all .2s ease-in-out;pointer-events:none}`;
   document.head.appendChild(s);
 
-  observer = new MutationObserver(m => console.log("DOM changes:", m.length));
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  observer = new MutationObserver(m => console.log('[Inspark] DOM changes:', m.length));
+  observer.observe(document.body, { childList:true, subtree:true, attributes:true });
 })();
+
+/* ------ helpers ------ */
+function isTopFrame() { return window.self === window.top; }
