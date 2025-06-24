@@ -1,0 +1,9 @@
+# macOS metadata
+.DS_Store
+
+# Python bytecode
+**/__pycache__/
+
+# Local env files
+.env
+microservice/.env
