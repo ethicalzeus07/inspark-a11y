@@ -1,347 +1,213 @@
-// content.js – Inspark A11y Assistant
-// Runs inside every page the tester opens.
+// content.js - Simplified version for testing
 
-/* ------------------------------------------------------------------ *
-   1.  STATE
-/* ------------------------------------------------------------------ */
-let highlightedElements = [];
-let observer            = null;
+console.log('🚀 Content script starting...');
 
-// Will collect live UI/UX issues if web-vitals loads successfully
-let liveUiIssues = [];
+// ────────── Global State ──────────
+let highlightedElement = null;
 
-/* ------------------------------------------------------------------ *
-   2.  (OPTIONAL) LOAD web-vitals WITH DYNAMIC import()
-       – keeps classic content-script compatible
-/* ------------------------------------------------------------------ */
-(async () => {
-  try {
-    const { onCLS, onLCP, onINP } =
-      await import('https://unpkg.com/web-vitals?module');
-
-    // CLS – Cumulative Layout Shift
-    onCLS(metric => {
-      if (metric.value > 0.1) {
-        liveUiIssues.push({
-          id: 'layout-shift',
-          impact: 'moderate',
-          nodes: [{
-            html: `<span>CLS: ${metric.value.toFixed(3)}</span>`,
-            target: [],
-            failureSummary:
-              `Cumulative Layout Shift is ${metric.value.toFixed(3)}, which exceeds 0.1.`
-          }]
-        });
-      }
-    });
-
-    // LCP – Largest Contentful Paint
-    onLCP(metric => {
-      if (metric.value > 2500) {
-        liveUiIssues.push({
-          id: 'lcp',
-          impact: 'serious',
-          nodes: [{
-            html: `<span>LCP: ${Math.round(metric.value)}ms</span>`,
-            target: [],
-            failureSummary:
-              `Largest Contentful Paint took ${Math.round(metric.value)} ms (above 2500 ms).`
-          }]
-        });
-      }
-    });
-
-    // INP – Interaction to Next Paint
-    onINP(metric => {
-      if (metric.value > 200) {
-        liveUiIssues.push({
-          id: 'inp',
-          impact: 'serious',
-          nodes: [{
-            html: `<span>INP: ${Math.round(metric.value)}ms</span>`,
-            target: [],
-            failureSummary:
-              `Interaction to Next Paint is ${Math.round(metric.value)} ms (above 200 ms).`
-          }]
-        });
-      }
-    });
-
-    console.log('[Inspark] web-vitals loaded');
-  } catch (e) {
-    // Could be blocked by CSP or network—fail gracefully
-    console.warn('[Inspark] web-vitals unavailable, skipping live UX metrics', e);
-  }
-})();
-
-/* ------------------------------------------------------------------ *
-   3.  MESSAGE ROUTER  (popup → content)
-/* ------------------------------------------------------------------ */
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  // Ignore scans inside iframes
-  if (!isTopFrame() && request.action === 'startScan') {
-    sendResponse({ status: 'ignored frame' });
-    return;
-  }
-
+// ────────── Message Handler ──────────
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('📨 Content script received:', request.action);
+  
   switch (request.action) {
+    case 'ping':
+      console.log('🏓 Ping received, responding with pong');
+      sendResponse({ pong: true, ready: !!window.axe });
+      return false; // Synchronous response
+      
     case 'startScan':
-      performAccessibilityScan()
-        .then(results =>
-          chrome.runtime.sendMessage({ action: 'scanComplete', results }))
-        .catch(err =>
-          chrome.runtime.sendMessage({ action: 'scanError', error: err.message }));
-      sendResponse({ status: 'scan started' });
-      return true; // async
-
-    case 'startGlobalScan':
-      performAccessibilityScan()
-        .then(async results => {
-          const url = location.href;
-          const { globalResults = {} } = await chrome.storage.local.get('globalResults');
-          globalResults[url] = results;
-          await chrome.storage.local.set({ globalResults });
-          chrome.runtime.sendMessage({ action: 'globalScanComplete', globalResults });
-        })
-        .catch(err =>
-          chrome.runtime.sendMessage({ action: 'scanError', error: err.message }));
-      sendResponse({ status: 'global scan started' });
-      return true;
-
+      console.log('🔍 Starting single scan...');
+      handleStartScan(sendResponse);
+      return true; // Asynchronous response
+      
+    case 'startBatchScan':
+      console.log('📚 Batch scan requested, falling back to single scan...');
+      handleStartScan(sendResponse);
+      return true; // Asynchronous response
+      
     case 'highlightElement':
       highlightElement(request.selector);
-      sendResponse({ status: 'highlighting' });
-      break;
-
+      sendResponse({ success: true });
+      return false;
+      
     case 'removeHighlight':
-      removeHighlights();
-      sendResponse({ status: 'highlights removed' });
-      break;
+      removeHighlight();
+      sendResponse({ success: true });
+      return false;
+      
+    default:
+      console.log('❓ Unknown action:', request.action);
+      sendResponse({ success: false, error: 'Unknown action' });
+      return false;
   }
 });
 
-/* ------------------------------------------------------------------ *
-   4.  MAIN SCAN ROUTINE
-/* ------------------------------------------------------------------ */
-async function performAccessibilityScan() {
-  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 10 });
-
-  const axeResults = await runAxeAnalysis();
-  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 50 });
-
-  const uiuxResults = await runUiUxChecks();
-  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 90 });
-
-  const combined = formatResults(axeResults, uiuxResults);
-  chrome.runtime.sendMessage({ action: 'scanProgress', progress: 100 });
-
-  return combined;
-}
-
-/* ------------------------------------------------------------------ *
-   5.  AXE ANALYSIS  (WCAG A/AA)
-/* ------------------------------------------------------------------ */
-function runAxeAnalysis() {
-  return new Promise((resolve, reject) => {
-    axe.run(
-      document,
-      {
-        iframes: false,
-        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] }
-      },
-      (err, results) => (err ? reject(err) : resolve(results))
-    );
-  });
-}
-
-/* ------------------------------------------------------------------ *
-   6.  UI/UX CHECKS  (touch-target, font-size, overflow) + live metrics
-/* ------------------------------------------------------------------ */
-async function runUiUxChecks() {
-  const issues = [];
-
-  /* 6-a Touch target */
-  const clickables =
-    ['a', 'button', 'input[type="button"]', 'input[type="submit"]'];
-  document.querySelectorAll(clickables.join(',')).forEach(el => {
-    const r = el.getBoundingClientRect();
-    if (r.width < 44 || r.height < 44) {
-      issues.push({
-        id: 'touch-target-size',
-        impact: 'moderate',
-        nodes: [{
-          html: el.outerHTML,
-          target: [simpleSelector(el)],
-          failureSummary:
-            `Touch target ${Math.round(r.width)}×${Math.round(r.height)} px; needs ≥44×44 px.`
-        }]
-      });
+// ────────── Scan Implementation ──────────
+async function handleStartScan(sendResponse) {
+  try {
+    console.log('🔍 Starting accessibility scan...');
+    
+    // Update progress
+    updateProgress(10);
+    
+    // Check if axe is available
+    if (!window.axe) {
+      throw new Error('Axe library not available');
     }
-  });
-
-  /* 6-b Font size */
-  const bodyFont = parseFloat(getComputedStyle(document.body).fontSize);
-  if (bodyFont < 16) {
-    issues.push({
-      id: 'font-size-too-small',
-      impact: 'minor',
-      nodes: [{
-        html: 'body',
-        target: ['body'],
-        failureSummary: `Body font-size ${bodyFont}px; recommended ≥16 px.`
-      }]
+    
+    updateProgress(30);
+    
+    console.log('🔍 Running axe scan...');
+    
+    // Run axe scan
+    window.axe.run(document, {
+      runOnly: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'],
+      resultTypes: ['violations'],
+      elementRef: true
+    }, (err, results) => {
+      if (err) {
+        console.error('❌ Axe scan error:', err);
+        chrome.runtime.sendMessage({
+          action: 'scanError',
+          error: 'Accessibility scan failed: ' + err.message
+        });
+        sendResponse({ success: false, error: err.message });
+        return;
+      }
+      
+      updateProgress(80);
+      
+      console.log('✅ Axe scan complete:', results);
+      
+      // Process results
+      const issues = [];
+      if (results.violations) {
+        results.violations.forEach(violation => {
+          violation.nodes.forEach(node => {
+            const issue = {
+              id: `${violation.id}-${node.target.join('-')}-${Date.now()}`,
+              title: violation.help,
+              description: violation.description,
+              severity: mapSeverity(violation.impact),
+              category: 'a11y',
+              type: violation.id,
+              wcagLevel: extractWcagLevel(violation.tags),
+              element: node.html,
+              selector: node.target.join(', '),
+              wcagReference: violation.helpUrl,
+              location: getSimpleLocation(node)
+            };
+            issues.push(issue);
+          });
+        });
+      }
+      
+      updateProgress(100);
+      
+      console.log(`✅ Scan complete: ${issues.length} issues found`);
+      
+      // Send results
+      chrome.runtime.sendMessage({
+        action: 'scanComplete',
+        results: issues
+      });
+      
+      sendResponse({ success: true, issues: issues.length });
     });
-  }
-
-  /* 6-c Horizontal overflow */
-  if (document.documentElement.scrollWidth > innerWidth) {
-    issues.push({
-      id: 'viewport-width',
-      impact: 'minor',
-      nodes: [{
-        html: '',
-        target: [],
-        failureSummary:
-          `Content width ${document.documentElement.scrollWidth}px exceeds viewport ${innerWidth}px.`
-      }]
+    
+  } catch (error) {
+    console.error('❌ Scan error:', error);
+    chrome.runtime.sendMessage({
+      action: 'scanError',
+      error: error.message
     });
+    sendResponse({ success: false, error: error.message });
   }
-
-  /* 6-d merge live web-vitals issues (if any) */
-  issues.push(...liveUiIssues);
-  liveUiIssues = [];
-
-  return issues;
 }
 
-/* ------------------------------------------------------------------ *
-   7.  UTILS & FORMATTERS
-/* ------------------------------------------------------------------ */
-function simpleSelector(el) {
-  let sel = el.tagName.toLowerCase();
-  if (el.className) {
-    const c = el.className.trim().split(/\s+/).join('.');
-    if (c) sel += `.${c}`;
+// ────────── Helper Functions ──────────
+function updateProgress(percent) {
+  try {
+    chrome.runtime.sendMessage({
+      action: 'scanProgress',
+      progress: percent
+    });
+  } catch (error) {
+    console.error('Error updating progress:', error);
   }
-  return sel;
 }
 
-function mapImpact(impact) {
-  return { critical: 'critical', serious: 'serious',
-           moderate: 'moderate', minor: 'minor' }[impact] || 'moderate';
-}
-
-function axeTitle(id) {
-  const t = {
-    'color-contrast': 'Insufficient Color Contrast',
-    'image-alt':      'Missing Image Alt Text',
-    'aria-required-attr': 'Missing Required ARIA Attributes',
-    'aria-roles':     'Invalid ARIA Role',
-    'button-name':    'Button Has No Discernible Text',
-    'document-title': 'Document Must Have Title',
-    'duplicate-id':   'Duplicate ID Attribute',
-    'frame-title':    'Frame Missing Title',
-    'html-has-lang':  'HTML Element Missing Lang Attribute',
-    'label':          'Form Element Has No Label',
-    'link-name':      'Link Has No Discernible Text'
+function mapSeverity(impact) {
+  const mapping = {
+    'critical': 'critical',
+    'serious': 'serious',
+    'moderate': 'moderate',
+    'minor': 'minor'
   };
-  return t[id] || `Accessibility Issue: ${id}`;
+  return mapping[impact] || 'moderate';
 }
 
-function uxTitle(id) {
-  const t = {
-    'touch-target-size':  'Touch Target Too Small',
-    'content-overflow':   'Content Overflow on Small Screens',
-    'font-size-too-small':'Font Size Too Small',
-    'element-overlap':    'Overlapping Elements',
-    'fixed-header-obscuring':'Fixed Header Obscures Content',
-    'viewport-width':     'Content Wider Than Viewport',
-    'layout-shift':       'Layout Instability (CLS)',
-    'lcp':                'Largest Contentful Paint Too Slow',
-    'inp':                'Slow Interaction (INP)'
-  };
-  return t[id] || `UI/UX Issue: ${id}`;
+function extractWcagLevel(tags) {
+  if (tags.includes('wcag22aa')) return 'WCAG 2.2 AA';
+  if (tags.includes('wcag21aa')) return 'WCAG 2.1 AA';
+  if (tags.includes('wcag2aa')) return 'WCAG 2.0 AA';
+  if (tags.includes('wcag2a')) return 'WCAG 2.0 A';
+  return 'WCAG';
 }
 
-/* ------------------------------------------------------------------ *
-   8.  COMBINE RESULTS
-/* ------------------------------------------------------------------ */
-function formatResults(axeRes, uxRes) {
-  const issues = [];
-  let id = 1;
-
-  axeRes.violations.forEach(v =>
-    v.nodes.forEach(n => issues.push({
-      id:          `issue-${id++}`,
-      title:       axeTitle(v.id),
-      description: n.failureSummary,
-      element:     truncate(n.html, 80),
-      selector:    n.target[0],
-      severity:    mapImpact(v.impact),
-      category:    'a11y',
-      type:        v.id,
-      screenshot:  null,
-      aiSuggestion:null
-    })));
-
-  uxRes.forEach(u =>
-    u.nodes.forEach(n => issues.push({
-      id:          `issue-${id++}`,
-      title:       uxTitle(u.id),
-      description: n.failureSummary,
-      element:     truncate(n.html, 80),
-      selector:    n.target[0] || '',
-      severity:    mapImpact(u.impact),
-      category:    'uiux',
-      type:        u.id,
-      screenshot:  null,
-      aiSuggestion:null
-    })));
-
-  return issues;
+function getSimpleLocation(node) {
+  try {
+    const element = node.element;
+    if (!element) return 'Unknown location';
+    
+    // Find nearest heading or landmark
+    const heading = element.closest('section, article')?.querySelector('h1, h2, h3, h4, h5, h6');
+    if (heading) {
+      return `Near heading: "${heading.textContent.trim().slice(0, 30)}"`;
+    }
+    
+    // Find landmark
+    const landmark = element.closest('header, nav, main, aside, footer, [role="banner"], [role="navigation"], [role="main"], [role="complementary"], [role="contentinfo"]');
+    if (landmark) {
+      const role = landmark.getAttribute('role') || landmark.tagName.toLowerCase();
+      return `In ${role} section`;
+    }
+    
+    // Default
+    return 'On the page';
+  } catch (error) {
+    return 'On the page';
+  }
 }
 
-const truncate = (str, max) =>
-  (str && str.length > max) ? str.slice(0, max) + '…' : str;
-
-/* ------------------------------------------------------------------ *
-   9.  HIGHLIGHT HELPERS
-/* ------------------------------------------------------------------ */
 function highlightElement(selector) {
-  removeHighlights();
-  document.querySelectorAll(selector).forEach(el => {
-    const r  = el.getBoundingClientRect();
-    const hl = document.createElement('div');
-    hl.className = 'inspark-a11y-highlight';
-    hl.style.cssText = `
-      position: absolute;
-      left:${scrollX + r.left}px; top:${scrollY + r.top}px;
-      width:${r.width}px; height:${r.height}px;
-      border:2px solid #3B82F6; background:rgba(59,130,246,0.1);
-      z-index:9999; pointer-events:none;`;
-    document.body.appendChild(hl);
-    highlightedElements.push(hl);
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
+  removeHighlight();
+  
+  try {
+    const element = document.querySelector(selector);
+    if (element) {
+      highlightedElement = element;
+      element.style.outline = '3px solid #10b981';
+      element.style.outlineOffset = '2px';
+      element.style.backgroundColor = 'rgba(16, 185, 129, 0.1)';
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  } catch (error) {
+    console.error('Error highlighting element:', error);
+  }
 }
 
-function removeHighlights() {
-  highlightedElements.forEach(h => h.remove());
-  highlightedElements = [];
+function removeHighlight() {
+  try {
+    if (highlightedElement) {
+      highlightedElement.style.outline = '';
+      highlightedElement.style.outlineOffset = '';
+      highlightedElement.style.backgroundColor = '';
+      highlightedElement = null;
+    }
+  } catch (error) {
+    console.error('Error removing highlight:', error);
+  }
 }
 
-/* ------------------------------------------------------------------ *
-   10.  INIT
-/* ------------------------------------------------------------------ */
-(function init() {
-  console.log('[Inspark] content script loaded');
-  const s = document.createElement('style');
-  s.textContent = `.inspark-a11y-highlight{transition:all .2s ease-in-out;pointer-events:none}`;
-  document.head.appendChild(s);
-
-  observer = new MutationObserver(m => console.log('[Inspark] DOM changes:', m.length));
-  observer.observe(document.body, { childList:true, subtree:true, attributes:true });
-})();
-
-/* ------ helpers ------ */
-function isTopFrame() { return window.self === window.top; }
+console.log('✅ Content script loaded and ready');

@@ -28,13 +28,23 @@ export const config = {
   defaultSettings: {
     highlightIssues: true,
     autoScanOnLoad: false,
-    aiSuggestions: true
+    aiSuggestions: true,
+    includePdfAiSuggestions: true // New setting for PDF reports
+  },
+  // API endpoints
+  endpoints: {
+    suggest: 'suggest',
+    aiSuggest: 'ai_suggest', 
+    analyze: 'analyze',
+    health: 'health',
+    generateReport: 'generate_report' // New PDF endpoint
   }
 };
 
 // Helper to get microservice endpoint
 export function getApiEndpoint(path) {
-  return `${config.microserviceUrl}/${path}`;
+  const endpoint = config.endpoints[path] || path;
+  return `${config.microserviceUrl}/${endpoint}`;
 }
 
 // Helper to log messages in debug mode

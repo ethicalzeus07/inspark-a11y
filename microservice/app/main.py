@@ -1,23 +1,34 @@
 # main.py
 
+import os
+import hashlib
+import logging
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from io import BytesIO
+
+import httpx
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-import logging
-import os
-from datetime import datetime
-import hashlib
-import requests
 
-# ─── Logging ───
+# PDF generation
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.colors import HexColor, black, white, red, orange, green, gray
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+# ─── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("inspark-a11y-assistant")
 
-# ─── FastAPI app ───
+# ─── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Inspark AI-Powered Accessibility Assistant",
     description="AI microservice for generating accessibility and UI/UX suggestions",
@@ -32,7 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Models ───
+# ─── Models ─────────────────────────────────────────────────────────────────────
 class IssueRequest(BaseModel):
     issueType: str
     issueDescription: str
@@ -56,178 +67,416 @@ class AnalysisResponse(BaseModel):
     summary: str
     timestamp: str
 
-# ─── Cache (for classic suggestion only) ───
+class ReportRequest(BaseModel):
+    url: str
+    issues: List[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = None
+    includeAiSuggestions: bool = True
+    reportTitle: Optional[str] = None
+
+# ─── In-process cache for heuristic suggestions ─────────────────────────────────
 suggestion_cache: Dict[str, str] = {}
 
-# ─── Helpers ───
+# ─── Helpers ────────────────────────────────────────────────────────────────────
 def detect_and_redact_pii(text: str) -> str:
-    return text
+    return text  # stub if you want to scrub e.g. emails
 
 async def verify_api_key(request: Request):
-    return True
+    return True  # stub for any real auth you need
 
-# ─── FastAPI/heuristic suggestion (classic) ───
 def fastapi_suggestion(issue: IssueRequest) -> str:
-    suggestions = {
+    fallbacks = {
         "a11y": {
-            "color-contrast": "Increase the contrast ratio. Try using a darker text or lighter background.",
-            "image-alt": "Add alt text to images describing their function.",
-            "default": "Review WCAG guidelines for accessibility compliance.",
+            "color-contrast": "Increase contrast; try darker text or lighter background.",
+            "image-alt":       "Add meaningful alt text, or alt=\"\" if decorative.",
+            "default":         "Review WCAG 2.1 AA guidelines.",
         },
         "uiux": {
-            "touch-target-size": "Increase touch target to at least 44×44 px so users can tap easily.",
-            "font-size-too-small": "Boost text size to at least 16 px for readability.",
-            "viewport-width": "Ensure content fits within the viewport to avoid horizontal scrolling.",
-            "layout-shift": "Reduce layout shifts by reserving image space and avoiding late DOM changes.",
-            "lcp": "Optimize largest contentful paint by deferring unused CSS and images.",
-            "inp": "Improve interactivity by reducing JavaScript blocking time below 200 ms.",
-            "default": "Follow Inspark UI/UX guidelines to ensure a smooth user experience.",
-        }
+            "touch-target-size":   "Make touch targets at least 44×44px.",
+            "font-size-too-small": "Use at least 16px for body text.",
+            "viewport-width":      "Ensure content fits viewport without scrolling.",
+            "layout-shift":        "Reserve image space; avoid late layout shifts.",
+            "lcp":                 "Defer non-critical resources to speed LCP.",
+            "inp":                 "Minimize JS blocking to under 200ms.",
+            "default":             "Follow Inspark UI/UX guidelines.",
+        },
     }
+    cat = fallbacks.get(issue.category, {})
     return (
-        suggestions.get(issue.category, {}).get(issue.issueType)
-        or suggestions.get(issue.category, {}).get("default")
-        or "Review accessibility and UI/UX best practices."
+        cat.get(issue.issueType)
+        or cat.get("default")
+        or "Review accessibility & UI/UX best practices."
     )
 
-# ─── OpenRouter/DeepSeek Suggestion with Multiple API Key Support ───
-def call_deepseek_openrouter(issue: IssueRequest) -> str:
-    raw_keys = os.getenv("OPENROUTER_API_KEY", "")
-    all_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
-    if not all_keys:
-        raise HTTPException(status_code=500, detail="OpenRouter API key not configured.")
+async def call_mistral_api(issue: IssueRequest) -> str:
+    """
+    Call Mistral's chat completions endpoint.
+    """
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip()
+    if not api_key:
+        logger.error("MISTRAL_API_KEY not set")
+        raise HTTPException(500, "Mistral API key not configured.")
 
-    # Shorten description to first 100 characters
-    short_desc = issue.issueDescription
-    if len(short_desc) > 100:
-        short_desc = short_desc[:100] + "…"
-
-    # Shorten HTML element to first 80 characters
-    short_elem = issue.element
-    if len(short_elem) > 80:
-        short_elem = short_elem[:80] + "…"
-
-    # Build a concise prompt asking for a brief recommendation
+    # Shorten long fields
+    desc = issue.issueDescription[:120] + ("…" if len(issue.issueDescription) > 120 else "")
+    elem = issue.element[:80] + ("…" if len(issue.element) > 80 else "")
+    
+    # Enhanced prompt for educational context
+    context_info = ""
+    if issue.context and issue.context.get("contentType") == "educational":
+        platform = issue.context.get("platform", "unknown")
+        page_type = issue.context.get("pageType", "content")
+        context_info = f" This is {platform} educational {page_type} content for university students."
+    
     prompt = (
-        "You are an accessibility and UI/UX expert. Give a very brief fix (under 30 words).\n"
-        f"Issue Type: {issue.issueType}\n"
+        "You are an expert in accessibility & UI/UX for educational content. "
+        "Give a practical fix in 1-2 sentences under 50 words." + context_info + "\n"
+        f"Issue: {issue.issueType}\n"
         f"Severity: {issue.severity}\n"
-        f"Description (short): {short_desc}\n"
-        f"HTML Element (short): {short_elem}\n"
+        f"Description: {desc}\n"
+        f"Element: {elem}\n"
         "Return only the recommendation."
     )
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = { "Content-Type": "application/json" }
-    payload_template = {
-        "model": "mistralai/mistral-7b-instruct:free",
-        "messages": [ { "role": "user", "content": prompt } ]
+    url = "https://api.mistral.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type":  "application/json",
+    }
+    payload = {
+        "model": "mistral-large-latest",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens":  80
     }
 
-    last_error = None
-    for key in all_keys:
-        headers["Authorization"] = f"Bearer {key}"
-        try:
-            resp = requests.post(url, headers=headers, json=payload_template, timeout=30)
-            resp.raise_for_status()
-            out = resp.json()
-            if (
-                "choices" in out and len(out["choices"]) > 0 and
-                "message" in out["choices"][0] and
-                "content" in out["choices"][0]["message"]
-            ):
-                return out["choices"][0]["message"]["content"].strip()
-            return "Sorry, could not generate an AI suggestion."
-        except Exception as e:
-            last_error = e
-            logger.warning(f"OpenRouter key failed: {key} → {e}")
-            continue
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, headers=headers, timeout=15.0)
+        resp.raise_for_status()
+        data = resp.json()
+        reply = data["choices"][0]["message"]["content"]
+        return reply.strip()
+    except httpx.HTTPStatusError as exc:
+        logger.error(f"Mistral API HTTP error: {exc}")
+        logger.error(f"Body was: {exc.response.text}")
+        raise HTTPException(502, "Mistral API request failed.")
+    except Exception as e:
+        logger.error(f"Mistral API exception: {e}")
+        raise HTTPException(502, "Mistral API request failed.")
 
-    logger.error(f"All API keys failed: {last_error}")
-    raise HTTPException(status_code=500, detail="All OpenRouter keys failed or are exhausted.")
+def generate_pdf_report(report_data: ReportRequest) -> BytesIO:
+    """Generate a professional PDF report for accessibility issues"""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch, bottomMargin=1*inch)
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        fontSize=24,
+        spaceAfter=30,
+        textColor=HexColor('#2563EB'),
+        alignment=TA_CENTER
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=12,
+        textColor=HexColor('#1F2937'),
+        borderWidth=0,
+        borderColor=HexColor('#E5E7EB'),
+        borderPadding=8
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=10,
+        spaceAfter=6,
+        textColor=HexColor('#374151')
+    )
+    
+    # Content
+    content = []
+    
+    # Title
+    title = report_data.reportTitle or "Accessibility Assessment Report"
+    content.append(Paragraph(title, title_style))
+    content.append(Spacer(1, 20))
+    
+    # Report metadata
+    platform = report_data.metadata.get('platform', 'Unknown') if report_data.metadata else 'Unknown'
+    page_type = report_data.metadata.get('pageType', 'content') if report_data.metadata else 'content'
+    
+    metadata_table = Table([
+        ['URL:', report_data.url],
+        ['Platform:', platform.title()],
+        ['Content Type:', page_type.title()],
+        ['Scan Date:', datetime.now().strftime('%Y-%m-%d %H:%M')],
+        ['Total Issues:', str(len(report_data.issues))]
+    ], colWidths=[2*inch, 4*inch])
+    
+    metadata_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (0, -1), HexColor('#F3F4F6')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('GRID', (0, 0), (-1, -1), 1, HexColor('#E5E7EB'))
+    ]))
+    
+    content.append(metadata_table)
+    content.append(Spacer(1, 30))
+    
+    # Summary
+    severity_counts = {'critical': 0, 'serious': 0, 'moderate': 0, 'minor': 0}
+    for issue in report_data.issues:
+        severity = issue.get('severity', 'minor')
+        if severity in severity_counts:
+            severity_counts[severity] += 1
+    
+    content.append(Paragraph("Executive Summary", heading_style))
+    
+    summary_data = [
+        ['Severity', 'Count', 'Description'],
+        ['Critical', str(severity_counts['critical']), 'Blocks access for users with disabilities'],
+        ['Serious', str(severity_counts['serious']), 'Significantly impacts accessibility'],
+        ['Moderate', str(severity_counts['moderate']), 'May cause accessibility issues'],
+        ['Minor', str(severity_counts['minor']), 'Minor accessibility improvements']
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[1.5*inch, 1*inch, 3.5*inch])
+    summary_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor('#1F2937')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), white),
+        ('BACKGROUND', (0, 1), (-1, 1), HexColor('#FEF2F2')),  # Critical - red
+        ('BACKGROUND', (0, 2), (-1, 2), HexColor('#FFFBEB')),  # Serious - orange
+        ('BACKGROUND', (0, 3), (-1, 3), HexColor('#F0FDF4')),  # Moderate - green
+        ('BACKGROUND', (0, 4), (-1, 4), HexColor('#F9FAFB')),  # Minor - gray
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('GRID', (0, 0), (-1, -1), 1, HexColor('#E5E7EB'))
+    ]))
+    
+    content.append(summary_table)
+    content.append(Spacer(1, 30))
+    
+    # Issues detail
+    content.append(Paragraph("Detailed Issues", heading_style))
+    
+    for i, issue in enumerate(report_data.issues, 1):
+        # Issue header
+        severity = issue.get('severity', 'minor')
+        severity_colors = {
+            'critical': HexColor('#EF4444'),
+            'serious': HexColor('#F59E0B'),
+            'moderate': HexColor('#10B981'),
+            'minor': HexColor('#6B7280')
+        }
+        
+        issue_title = f"{i}. {issue.get('title', 'Unknown Issue')}"
+        issue_style = ParagraphStyle(
+            'IssueTitle',
+            parent=styles['Heading3'],
+            fontSize=14,
+            spaceAfter=8,
+            textColor=severity_colors.get(severity, black),
+            leftIndent=0
+        )
+        
+        content.append(Paragraph(issue_title, issue_style))
+        
+        # Issue details
+        issue_details = [
+            ['Severity:', severity.title()],
+            ['Category:', issue.get('category', 'unknown').title()],
+            ['Element:', issue.get('element', 'N/A')[:100] + ('...' if len(issue.get('element', '')) > 100 else '')],
+        ]
+        
+        if issue.get('selector'):
+            issue_details.append(['Selector:', issue.get('selector')])
+        
+        issue_table = Table(issue_details, colWidths=[1.2*inch, 4.8*inch])
+        issue_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 0), (0, -1), HexColor('#F9FAFB')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#E5E7EB'))
+        ]))
+        
+        content.append(issue_table)
+        content.append(Spacer(1, 8))
+        
+        # Description
+        description = issue.get('description', 'No description available.')
+        content.append(Paragraph(f"<b>Description:</b> {description}", body_style))
+        content.append(Spacer(1, 8))
+        
+        # AI Suggestion if requested and available
+        if report_data.includeAiSuggestions and issue.get('aiSuggestion'):
+            ai_suggestion = issue.get('aiSuggestion')
+            suggestion_style = ParagraphStyle(
+                'AISuggestion',
+                parent=body_style,
+                leftIndent=20,
+                backgroundColor=HexColor('#F0FDF4'),
+                borderColor=HexColor('#10B981'),
+                borderWidth=1,
+                borderPadding=8
+            )
+            content.append(Paragraph(f"<b>💡 AI Recommendation:</b> {ai_suggestion}", suggestion_style))
+        
+        content.append(Spacer(1, 20))
+        
+        # Page break after every 3 issues (except the last)
+        if i % 3 == 0 and i < len(report_data.issues):
+            content.append(PageBreak())
+    
+    # Footer information
+    content.append(Spacer(1, 40))
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=HexColor('#6B7280'),
+        alignment=TA_CENTER
+    )
+    
+    content.append(Paragraph("Generated by Inspark Accessibility Assistant", footer_style))
+    content.append(Paragraph(f"Report created on {datetime.now().strftime('%Y-%m-%d at %H:%M')}", footer_style))
+    content.append(Paragraph("For questions about accessibility compliance, contact your development team.", footer_style))
+    
+    # Build PDF
+    doc.build(content)
+    buffer.seek(0)
+    return buffer
 
-# ─── Routes ───
-
+# ─── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/")
 async def root():
-    return {"name": app.title, "version": app.version, "status": "operational"}
+    return {"name": app.title, "version": app.version, "status": "ok"}
 
-@app.post("/api/suggest", response_model=SuggestionResponse, dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/api/suggest",
+    response_model=SuggestionResponse,
+    dependencies=[Depends(verify_api_key)]
+)
 async def generate_suggestion(request: IssueRequest):
     """
-    Classic FastAPI/heuristic suggestion (always runs)
+    Simple heuristic suggestion (no AI call).
     """
     try:
         elem = detect_and_redact_pii(request.element)
-        desc = detect_and_redact_pii(request.issueDescription)
         key = f"{request.category}:{request.issueType}:{hashlib.md5(elem.encode()).hexdigest()}"
         if key in suggestion_cache:
-            logger.info(f"Cache hit: {key}")
-            return SuggestionResponse(
-                suggestion=suggestion_cache[key],
-                timestamp=datetime.now().isoformat()
-            )
-        suggestion = fastapi_suggestion(request)
-        suggestion_cache[key] = suggestion
-        return SuggestionResponse(
-            suggestion=suggestion,
-            timestamp=datetime.now().isoformat()
-        )
+            txt = suggestion_cache[key]
+        else:
+            txt = fastapi_suggestion(request)
+            suggestion_cache[key] = txt
+        return SuggestionResponse(suggestion=txt, timestamp=datetime.now().isoformat())
     except Exception as e:
-        logger.error(f"Error [/api/suggest]: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[/api/suggest] error: {e}")
+        raise HTTPException(500, str(e))
 
-@app.post("/api/ai_suggest", response_model=SuggestionResponse, dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/api/ai_suggest",
+    response_model=SuggestionResponse,
+    dependencies=[Depends(verify_api_key)]
+)
 async def ai_generate_suggestion(request: IssueRequest):
     """
-    DeepSeek (OpenRouter) AI suggestion (only runs when user clicks AI Suggestion)
+    On-demand Mistral AI suggestion via chat.
     """
     try:
-        elem = detect_and_redact_pii(request.element)
-        desc = detect_and_redact_pii(request.issueDescription)
-        ai_suggestion = call_deepseek_openrouter(request)
-        return SuggestionResponse(
-            suggestion=ai_suggestion,
-            timestamp=datetime.now().isoformat()
-        )
+        request.issueDescription = detect_and_redact_pii(request.issueDescription)
+        request.element          = detect_and_redact_pii(request.element)
+        ai_txt = await call_mistral_api(request)
+        return SuggestionResponse(suggestion=ai_txt, timestamp=datetime.now().isoformat())
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error [/api/ai_suggest]: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[/api/ai_suggest] error: {e}")
+        raise HTTPException(500, str(e))
 
-@app.post("/api/analyze", response_model=AnalysisResponse, dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/api/analyze",
+    response_model=AnalysisResponse,
+    dependencies=[Depends(verify_api_key)]
+)
 async def analyze_page(request: AnalysisRequest):
     """
-    Analyze a full page and generate suggestions for each issue (using FastAPI/heuristic).
+    Batch page analysis using the heuristic /api/suggest.
     """
     try:
         suggestions: Dict[str, str] = {}
-        for idx, issue in enumerate(request.issues):
+        for idx, issue in enumerate(request.issues, start=1):
             req = IssueRequest(
                 issueType=issue.get("type", "unknown"),
                 issueDescription=detect_and_redact_pii(issue.get("description", "")),
                 element=detect_and_redact_pii(issue.get("element", "")),
                 severity=issue.get("severity", "moderate"),
                 category=issue.get("category", "a11y"),
-                context={"url": request.url}
             )
             resp = await generate_suggestion(req)
-            suggestions[f"issue-{idx+1}"] = resp.suggestion
+            suggestions[f"issue-{idx}"] = resp.suggestion
 
-        summary = f"Analysis completed for {request.url}. Found {len(request.issues)} issues."
+        summary = f"Analyzed {len(request.issues)} issues on {request.url}"
         return AnalysisResponse(
             suggestions=suggestions,
             summary=summary,
             timestamp=datetime.now().isoformat()
         )
     except Exception as e:
-        logger.error(f"Error [/api/analyze]: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[/api/analyze] error: {e}")
+        raise HTTPException(500, str(e))
+
+@app.post(
+    "/api/generate_report",
+    dependencies=[Depends(verify_api_key)]
+)
+async def generate_report(request: ReportRequest):
+    """
+    Generate a PDF accessibility report.
+    """
+    try:
+        logger.info(f"Generating PDF report for {request.url}")
+        
+        # Generate PDF
+        pdf_buffer = generate_pdf_report(request)
+        
+        # Create filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        domain = request.url.split('/')[2] if '/' in request.url else 'report'
+        filename = f"accessibility_report_{domain}_{timestamp}.pdf"
+        
+        # Return PDF as streaming response
+        return StreamingResponse(
+            BytesIO(pdf_buffer.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"[/api/generate_report] error: {e}")
+        raise HTTPException(500, f"Report generation failed: {str(e)}")
 
 @app.get("/api/health")
-async def health_check():
+async def health():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-# ─── Run locally ───
+# ─── Uvicorn entrypoint ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
