@@ -1,11 +1,12 @@
-// popup.js – Complete working version with modal, PDF, and resizing
+// popup.js - Enhanced with lesson scanning functionality
 
 document.addEventListener('DOMContentLoaded', () => {
-  console.log("🎉 popup.js loaded");
+  console.log("🎉 Enhanced popup.js loaded");
 
   // ────────── DOM Elements ──────────
-  const scanBtn = document.getElementById('scanBtn');
-  const globalScanBtn = document.getElementById('globalScanBtn');
+  const quickScanBtn = document.getElementById('quickScanBtn');
+  const lessonScanBtn = document.getElementById('lessonScanBtn');
+  const stopLessonBtn = document.getElementById('stopLessonBtn');
   const exportBtn = document.getElementById('exportBtn');
   const scanStatus = document.getElementById('scanStatus');
   const resultsContainer = document.getElementById('resultsContainer');
@@ -16,6 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressPercent = document.getElementById('progressPercent');
   const progressFill = document.getElementById('progressFill');
   const scanProgress = document.getElementById('scanProgress');
+  
+  // New lesson scan elements
+  const lessonScanContainer = document.getElementById('lessonScanContainer');
+  const lessonStatus = document.getElementById('lessonStatus');
+  const lessonProgress = document.getElementById('lessonProgress');
+  const currentScreenDisplay = document.getElementById('currentScreen');
+  const totalIssuesDisplay = document.getElementById('totalIssues');
+  const screensContainer = document.getElementById('screensContainer');
+  const screensList = document.getElementById('screensList');
   
   // Modal elements
   const issueDetail = document.getElementById('issueDetail');
@@ -28,19 +38,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const detailCategory = document.getElementById('detailCategory');
   const aiSuggestion = document.getElementById('aiSuggestion');
   const fetchAiSuggestion = document.getElementById('fetchAiSuggestion');
-  const advancedAiSuggestion = document.getElementById('deepseekAiSuggestion');
+  const advancedAiSuggestion = document.getElementById('advancedAiSuggestion');
   
   // Summary elements
   const criticalCount = document.getElementById('criticalCount');
   const seriousCount = document.getElementById('seriousCount');
   const moderateCount = document.getElementById('moderateCount');
   const minorCount = document.getElementById('minorCount');
-  const quickActions = document.getElementById('quickActions');
 
   // ────────── State ──────────
   let currentResults = [];
+  let lessonScanData = [];
   let activeFilter = 'all';
   let currentIssueForAi = null;
+  let lessonScanActive = false;
+  let viewMode = 'quick'; // 'quick' or 'lesson'
 
   // ────────── Helper Functions ──────────
   const truncate = (str, max) =>
@@ -65,169 +77,243 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/'/g, "&#039;");
   }
 
-  // Function to resize popup for modal
+  function formatAiSuggestion(suggestion) {
+    if (!suggestion) return '<div class="text-sm text-gray-400">No suggestion available</div>';
+    
+    // Split suggestion into explanation and code parts
+    const parts = suggestion.split(/```|`{3,}/);
+    
+    // Check for HTML/CSS code patterns
+    const codePatterns = [
+      /<[^>]+>/,  // HTML tags
+      /style\s*=\s*"[^"]*"/,  // Style attributes
+      /background-color\s*:\s*#[0-9a-fA-F]{6}/,  // CSS colors
+      /color\s*:\s*#[0-9a-fA-F]{6}/,  // CSS colors
+      /aria-[a-z-]+\s*=/,  // ARIA attributes
+      /class\s*=\s*"[^"]*"/  // Class attributes
+    ];
+    
+    let formattedHTML = '<div class="space-y-4">';
+    
+    if (parts.length > 1) {
+      // Handle explicit code blocks (with ```)
+      parts.forEach((part, index) => {
+        if (index % 2 === 0) {
+          // Text part
+          if (part.trim()) {
+            formattedHTML += `<div class="ai-explanation">${formatExplanation(part.trim())}</div>`;
+          }
+        } else {
+          // Code part
+          formattedHTML += formatCodeBlock(part.trim());
+        }
+      });
+    } else {
+      // Auto-detect code within the suggestion
+      const lines = suggestion.split('\n');
+      let currentSection = '';
+      let inCodeSection = false;
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        
+        // Check if this line contains code
+        const isCodeLine = codePatterns.some(pattern => pattern.test(trimmedLine));
+        
+        if (isCodeLine && !inCodeSection) {
+          // Starting a code section
+          if (currentSection.trim()) {
+            formattedHTML += `<div class="ai-explanation">${formatExplanation(currentSection.trim())}</div>`;
+            currentSection = '';
+          }
+          inCodeSection = true;
+          currentSection = trimmedLine;
+        } else if (isCodeLine && inCodeSection) {
+          // Continuing code section
+          currentSection += '\n' + trimmedLine;
+        } else if (!isCodeLine && inCodeSection) {
+          // Ending code section
+          formattedHTML += formatCodeBlock(currentSection);
+          currentSection = trimmedLine;
+          inCodeSection = false;
+        } else {
+          // Regular text
+          if (trimmedLine) {
+            currentSection += (currentSection ? '\n' : '') + trimmedLine;
+          }
+        }
+      });
+      
+      // Handle remaining content
+      if (currentSection.trim()) {
+        if (inCodeSection) {
+          formattedHTML += formatCodeBlock(currentSection);
+        } else {
+          formattedHTML += `<div class="ai-explanation">${formatExplanation(currentSection.trim())}</div>`;
+        }
+      }
+    }
+    
+    formattedHTML += '</div>';
+    return formattedHTML;
+  }
+
+  function formatExplanation(text) {
+    // Format the explanation text with better typography
+    let formatted = escapeHtml(text);
+    
+    // Highlight important terms
+    formatted = formatted
+      .replace(/WCAG\s+[\d.]+\s*AA?/gi, '<span class="wcag-highlight">$&</span>')
+      .replace(/(\d+\.?\d*:\d+)/g, '<span class="ratio-highlight">$1</span>')
+      .replace(/#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})/gi, '<span class="color-highlight" style="background-color: $&; color: white; padding: 1px 4px; border-radius: 3px; font-family: monospace;">$&</span>')
+      .replace(/aria-[a-z-]+/gi, '<span class="aria-highlight">$&</span>')
+      .replace(/\b(screen reader|assistive technology|keyboard navigation|accessibility)\b/gi, '<span class="a11y-highlight">$&</span>');
+    
+    return `<p class="text-sm leading-relaxed">${formatted}</p>`;
+  }
+
+  function formatCodeBlock(code) {
+    if (!code || !code.trim()) return '';
+    
+    const escapedCode = escapeHtml(code.trim());
+    
+    // Determine code type
+    let language = 'html';
+    if (code.includes('style=') || code.includes('background-color:') || code.includes('color:')) {
+      language = 'html';
+    } else if (code.includes('{') && code.includes('}')) {
+      language = 'css';
+    }
+    
+    return `
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-language">${language.toUpperCase()}</span>
+          <button class="copy-code-btn" onclick="copyToClipboard('${escapedCode.replace(/'/g, "\\'")}')">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Copy
+          </button>
+        </div>
+        <pre class="code-content"><code class="language-${language}">${formatSyntaxHighlight(escapedCode, language)}</code></pre>
+      </div>
+    `;
+  }
+
+  function formatSyntaxHighlight(code, language) {
+    if (language === 'html') {
+      return code
+        .replace(/(&lt;\/?)([a-zA-Z][a-zA-Z0-9]*)/g, '$1<span class="html-tag">$2</span>')
+        .replace(/(\w+)=&quot;([^&]*)&quot;/g, '<span class="html-attr">$1</span>=<span class="html-value">&quot;$2&quot;</span>')
+        .replace(/(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})/g, '<span class="color-value">$1</span>');
+    } else if (language === 'css') {
+      return code
+        .replace(/([a-zA-Z-]+)(\s*:\s*)([^;]+)/g, '<span class="css-prop">$1</span>$2<span class="css-value">$3</span>')
+        .replace(/(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})/g, '<span class="color-value">$1</span>');
+    }
+    return code;
+  }
+
+  // Copy to clipboard function
+  window.copyToClipboard = function(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    
+    showNotification('📋 Code copied to clipboard!', 'success');
+  };
+
   function resizeForModal(isOpen = false) {
     if (isOpen) {
-      // Expand popup for modal
-      document.body.style.width = '600px';
+      document.body.style.width = '700px';
       document.body.style.maxHeight = '90vh';
       document.body.classList.add('modal-open');
     } else {
-      // Restore original size
       document.body.style.width = '480px';
       document.body.style.maxHeight = '700px';
       document.body.classList.remove('modal-open');
     }
   }
 
-  // Load last scan from storage
-  chrome.storage.local.get(['lastScanResults'], ({ lastScanResults }) => {
-    if (lastScanResults) {
-      currentResults = lastScanResults.map(issue => ({
+  // Load previous scan results
+  chrome.storage.local.get(['lastQuickScanResults', 'lastLessonScanResults', 'lastLessonScanScreenData'], (data) => {
+    if (data.lastQuickScanResults) {
+      currentResults = data.lastQuickScanResults.map(issue => ({
         ...issue,
         description: prettifyDescription(issue.description)
       }));
+      viewMode = 'quick';
       updateResultsView();
+    } else if (data.lastLessonScanResults) {
+      currentResults = data.lastLessonScanResults.map(issue => ({
+        ...issue,
+        description: prettifyDescription(issue.description)
+      }));
+      lessonScanData = data.lastLessonScanScreenData || [];
+      viewMode = 'lesson';
+      updateLessonView();
+    }
+  });
+
+  // Check lesson scan state on load
+  chrome.runtime.sendMessage({ action: 'getLessonScanState' }, (response) => {
+    if (response && response.success && response.state.isActive) {
+      lessonScanActive = true;
+      updateLessonScanUI(true);
     }
   });
 
   // ────────── Modal Functionality ──────────
   function closeModal() {
-    // Restore original popup size
     resizeForModal(false);
-    
-    if (issueDetail) {
-      issueDetail.classList.add('hidden');
-    }
-    if (resultsContainer) {
-      resultsContainer.classList.remove('hidden');
-    }
+    if (issueDetail) issueDetail.classList.add('hidden');
+    if (resultsContainer) resultsContainer.classList.remove('hidden');
+    if (screensContainer) screensContainer.classList.remove('hidden');
   }
 
   // Modal event listeners
-  if (backBtn) {
-    backBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeModal();
-    });
-  }
+  if (backBtn) backBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+  });
 
-  if (closeDetail) {
-    closeDetail.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeModal();
-    });
-  }
+  if (closeDetail) closeDetail.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+  });
 
-  if (modalBackdrop) {
-    modalBackdrop.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeModal();
-    });
-  }
+  if (modalBackdrop) modalBackdrop.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+  });
 
-  // Prevent closing when clicking inside modal content
-  const modalContent = document.querySelector('.modal-content');
-  if (modalContent) {
-    modalContent.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
-  }
-
-  // Escape key to close
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && issueDetail && !issueDetail.classList.contains('hidden')) {
       closeModal();
     }
   });
 
-  // ────────── Export Dropdown Setup ──────────
-  const exportDropdown = document.getElementById('exportDropdown');
-  
-  // Create export dropdown if it doesn't exist
-  if (!exportDropdown && exportBtn) {
-    const dropdownHtml = `
-      <div id="exportDropdown" class="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl z-50 hidden border border-gray-200 overflow-hidden">
-        <div class="py-1">
-          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-green-50 hover:text-green-600 transition-colors border-b border-gray-100" data-format="pdf">
-            <span class="text-lg">📋</span>
-            <div>
-              <div class="font-medium">PDF Report</div>
-              <div class="text-xs text-gray-500">Professional report with AI suggestions</div>
-            </div>
-          </button>
-          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors" data-format="html">
-            <span class="text-lg">📄</span>
-            <span>HTML Report</span>
-          </button>
-          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors" data-format="csv">
-            <span class="text-lg">📊</span>
-            <span>CSV Export</span>
-          </button>
-          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors" data-format="json">
-            <span class="text-lg">📋</span>
-            <span>JSON Data</span>
-          </button>
-          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors" data-format="markdown">
-            <span class="text-lg">📝</span>
-            <span>Markdown</span>
-          </button>
-        </div>
-      </div>
-    `;
-    
-    if (exportBtn.parentElement) {
-      exportBtn.parentElement.style.position = 'relative';
-      exportBtn.parentElement.insertAdjacentHTML('beforeend', dropdownHtml);
-    }
-  }
-
   // ────────── Event Handlers ──────────
-  if (scanBtn) {
-    scanBtn.addEventListener('click', startScan);
+  if (quickScanBtn) {
+    quickScanBtn.addEventListener('click', startQuickScan);
   }
   
-  if (globalScanBtn) {
-    globalScanBtn.addEventListener('click', startBatchScan);
+  if (lessonScanBtn) {
+    lessonScanBtn.addEventListener('click', startLessonScan);
   }
-  
-  // Export button click handler
+
+  if (stopLessonBtn) {
+    stopLessonBtn.addEventListener('click', stopLessonScan);
+  }
+
   if (exportBtn) {
-    exportBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!exportBtn.disabled) {
-        const dropdown = document.getElementById('exportDropdown');
-        if (dropdown) {
-          dropdown.classList.toggle('hidden');
-        }
-      }
-    });
+    exportBtn.addEventListener('click', () => exportReport('html'));
   }
-
-  // Export format handlers
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('.export-option')) {
-      const format = e.target.closest('.export-option').dataset.format;
-      const dropdown = document.getElementById('exportDropdown');
-      if (dropdown) dropdown.classList.add('hidden');
-      exportReport(format);
-    } else if (!e.target.closest('#exportBtn')) {
-      // Close dropdown when clicking outside
-      const dropdown = document.getElementById('exportDropdown');
-      if (dropdown) dropdown.classList.add('hidden');
-    }
-  });
-
-  // Quick export handlers
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('.quick-export')) {
-      const format = e.target.closest('.quick-export').dataset.format;
-      exportReport(format);
-    }
-  });
 
   // Filter buttons
   filterBtns.forEach(btn => {
@@ -237,7 +323,12 @@ document.addEventListener('DOMContentLoaded', () => {
         b.classList.remove('active', 'bg-blue-100', 'border-blue-300');
       });
       btn.classList.add('active', 'bg-blue-100', 'border-blue-300');
-      renderIssuesList();
+      
+      if (viewMode === 'lesson') {
+        renderLessonScreens();
+      } else {
+        renderIssuesList();
+      }
     });
   });
 
@@ -269,7 +360,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       try {
-        // Get AI suggestion
+        console.log('🤖 Requesting AI suggestion for issue:', currentIssueForAi.id);
+        
         const response = await new Promise((resolve) => {
           chrome.runtime.sendMessage({ 
             action: 'getAiSuggestion', 
@@ -277,45 +369,58 @@ document.addEventListener('DOMContentLoaded', () => {
           }, resolve);
         });
 
-        const suggestion = response?.suggestion || "Review WCAG guidelines for this accessibility issue. Consider using semantic HTML and proper ARIA labels.";
-        
-        // Display the AI suggestion
-        if (advancedAiSuggestion) {
-          if (suggestion.length > 300) {
-            advancedAiSuggestion.innerHTML = `
-              <div class="space-y-2">
-                <div class="text-sm">${suggestion.slice(0, 300)}...</div>
-                <button class="text-xs text-purple-600 hover:text-purple-800 underline" onclick="this.parentElement.innerHTML='${escapeHtml(suggestion)}'">
-                  Show full analysis
-                </button>
-              </div>
-            `;
-          } else {
-            advancedAiSuggestion.textContent = suggestion;
-          }
-        }
+        console.log('📥 AI suggestion response:', response);
 
-        // Log AI suggestion in currentResults and storage
-        const idx = currentResults.findIndex(i => i.id === currentIssueForAi.id);
-        if (idx > -1) {
-          currentResults[idx].advancedAiSuggestion = suggestion;
-          chrome.storage.local.set({ lastScanResults: currentResults });
+        if (response && response.success && response.suggestion) {
+          const suggestion = response.suggestion;
+          
+          // Parse and format the AI suggestion
+          const formattedSuggestion = formatAiSuggestion(suggestion);
+          
+          // Display the formatted AI suggestion
+          if (advancedAiSuggestion) {
+            advancedAiSuggestion.innerHTML = formattedSuggestion;
+          }
+
+          // Update stored results
+          const idx = currentResults.findIndex(i => i.id === currentIssueForAi.id);
+          if (idx > -1) {
+            currentResults[idx].advancedAiSuggestion = suggestion;
+            const storageKey = viewMode === 'lesson' ? 'lastLessonScanResults' : 'lastQuickScanResults';
+            chrome.storage.local.set({ [storageKey]: currentResults });
+          }
+          
+          showNotification('🤖 AI analysis complete!', 'success');
+        } else {
+          throw new Error(response?.error || 'Failed to get AI suggestion');
+        }
+      } catch (error) {
+        console.error('❌ AI suggestion error:', error);
+        
+        let errorMessage = 'Could not get AI analysis. ';
+        if (error.message.includes('microservice') || error.message.includes('API')) {
+          errorMessage += 'Make sure the microservice is running on localhost:8000.';
+        } else {
+          errorMessage += 'Please check your connection and try again.';
         }
         
-        showNotification('AI analysis complete!', 'success');
-      } catch (error) {
-        console.error('AI suggestion error:', error);
         if (advancedAiSuggestion) {
           advancedAiSuggestion.innerHTML = `
-            <div class="flex items-center space-x-2 text-red-600">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="flex items-start space-x-2 text-red-400 bg-red-900 bg-opacity-20 p-3 rounded-lg border border-red-600">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Could not get AI analysis. Please check your connection and try again.</span>
+              <div>
+                <div class="font-medium">AI Service Unavailable</div>
+                <div class="text-sm mt-1">${errorMessage}</div>
+                <div class="text-xs mt-2 text-red-300">
+                  Tip: Start the microservice with: <code class="bg-red-800 px-1 rounded">python main.py</code>
+                </div>
+              </div>
             </div>
           `;
         }
-        showNotification('AI analysis failed. Please try again.', 'error');
+        showNotification('❌ AI analysis failed. Check if microservice is running.', 'error');
       }
 
       fetchAiSuggestion.disabled = false;
@@ -323,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
-        <span>Get Advanced AI Analysis</span>
+        <span>Get AI Recommendation</span>
       `;
     });
   }
@@ -334,18 +439,16 @@ document.addEventListener('DOMContentLoaded', () => {
     switch(request.action) {
       case 'scanProgress':
         return updateScanProgress(request.progress);
-      case 'scanComplete':
-        return scanComplete(request.results);
-      case 'batchScanStarted':
-        return batchScanStarted(request);
-      case 'batchScanProgress':
-        return updateBatchProgress(request);
-      case 'batchScanComplete':
-        return batchScanComplete(request);
+      case 'quickScanComplete':
+        return quickScanComplete(request.results);
+      case 'lessonScanStarted':
+        return lessonScanStarted(request);
+      case 'lessonScanProgress':
+        return updateLessonProgress(request);
+      case 'lessonScanComplete':
+        return lessonScanComplete(request);
       case 'scanError':
         return showError(request.error);
-      case 'aiSuggestionReady':
-        return updateAiSuggestion(request.issueId, request.suggestion);
     }
   });
 
@@ -401,11 +504,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ────────── Scan Functions ──────────
-  async function startScan() {
-    console.log('🔍 Starting scan...');
+  // ────────── Quick Scan Functions ──────────
+  async function startQuickScan() {
+    console.log('⚡ Starting quick scan...');
     
     resetUI();
+    viewMode = 'quick';
     
     try {
       const connection = await ensureConnectionToPage();
@@ -415,84 +519,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (scanStatus) scanStatus.textContent = 'Starting accessibility scan...';
+      if (scanStatus) scanStatus.textContent = 'Starting quick accessibility scan...';
       updateScanProgress(5);
 
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, { action: 'startScan' }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.error('Scan message error:', chrome.runtime.lastError);
-              showError('Failed to start scan. Please refresh the page and try again.');
-            } else if (!response || !response.success) {
-              console.error('Scan failed:', response);
-              showError('Scan failed: ' + (response?.error || 'Unknown error'));
-            }
-          });
+      chrome.runtime.sendMessage({ action: 'startQuickScan' }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Quick scan message error:', chrome.runtime.lastError);
+          showError('Failed to start quick scan. Please refresh the page and try again.');
+        } else if (!response || !response.success) {
+          console.error('Quick scan failed:', response);
+          showError('Quick scan failed: ' + (response?.error || 'Unknown error'));
         }
       });
 
     } catch (error) {
-      console.error('Scan error:', error);
-      showError('Failed to start scan: ' + error.message);
+      console.error('Quick scan error:', error);
+      showError('Failed to start quick scan: ' + error.message);
     }
   }
 
-  async function startBatchScan() {
-    console.log('📚 Starting batch scan...');
-    
-    resetUI();
-    if (scanStatus) scanStatus.textContent = 'Analyzing lesson structure...';
-    
-    try {
-      const connection = await ensureConnectionToPage();
-      
-      if (!connection.success) {
-        showError(connection.error);
-        return;
-      }
-
-      updateScanProgress(5);
-
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, { action: 'startBatchScan' }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.error('Batch scan message error:', chrome.runtime.lastError);
-              showError('Failed to start batch scan. Please refresh the page and try again.');
-            } else if (!response || !response.success) {
-              console.error('Batch scan failed:', response);
-              showError('Batch scan failed: ' + (response?.error || 'Unknown error'));
-            }
-          });
-        }
-      });
-
-    } catch (error) {
-      console.error('Batch scan error:', error);
-      showError('Failed to start batch scan: ' + error.message);
-    }
-  }
-
-  function resetUI() {
-    if (scanStatus) {
-      scanStatus.textContent = 'Preparing scan...';
-      scanStatus.classList.remove('hidden');
-    }
-    if (scanProgress) scanProgress.classList.remove('hidden');
-    if (emptyState) emptyState.classList.add('hidden');
-    if (resultsContainer) resultsContainer.classList.add('hidden');
-    if (issuesList) issuesList.innerHTML = '';
-    
-    // Disable buttons
-    if (scanBtn) scanBtn.disabled = true;
-    if (exportBtn) exportBtn.disabled = true;
-    if (globalScanBtn) globalScanBtn.disabled = true;
-  }
-
-  // ────────── Response Handlers ──────────
-  function scanComplete(results) {
-    console.log('✅ Scan complete with', results.length, 'issues');
+  function quickScanComplete(results) {
+    console.log('⚡ Quick scan complete with', results.length, 'issues');
     
     hideProgress();
     enableButtons();
@@ -502,111 +549,165 @@ document.addEventListener('DOMContentLoaded', () => {
       description: prettifyDescription(issue.description)
     }));
     
-    chrome.storage.local.set({ lastScanResults: currentResults });
+    viewMode = 'quick';
+    chrome.storage.local.set({ lastQuickScanResults: currentResults });
     updateResultsView();
     
-    showNotification(`Scan complete: ${currentResults.length} issues found`, 'success');
+    showNotification(`Quick scan complete: ${currentResults.length} critical issues found`, 'success');
   }
 
-  function batchScanStarted(request) {
-    if (scanStatus) {
-      scanStatus.textContent = request.message || 'Starting batch scan...';
-      scanStatus.classList.remove('hidden');
-    }
-    if (scanProgress) scanProgress.classList.remove('hidden');
-  }
-
-  function updateBatchProgress(request) {
-    const { progress, current, total, screenTitle } = request;
+  // ────────── Lesson Scan Functions ──────────
+  async function startLessonScan() {
+    console.log('📚 Starting lesson scan...');
     
-    if (scanStatus) {
-      scanStatus.textContent = screenTitle ? 
-        `Scanning "${screenTitle}" (${current}/${total})...` : 
-        `Scanning lesson screens... ${progress}%`;
-    }
+    resetUI();
+    viewMode = 'lesson';
+    lessonScanActive = true;
+    updateLessonScanUI(true);
     
-    updateScanProgress(progress);
+    try {
+      const connection = await ensureConnectionToPage();
+      
+      if (!connection.success) {
+        showError(connection.error);
+        return;
+      }
+
+      if (lessonStatus) lessonStatus.textContent = 'Starting lesson scan...';
+      if (lessonProgress) lessonProgress.classList.remove('hidden');
+
+      chrome.runtime.sendMessage({ action: 'startLessonScan' }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Lesson scan message error:', chrome.runtime.lastError);
+          showError('Failed to start lesson scan. Please refresh the page and try again.');
+          updateLessonScanUI(false);
+        } else if (!response || !response.success) {
+          console.error('Lesson scan failed:', response);
+          showError('Lesson scan failed: ' + (response?.error || 'Unknown error'));
+          updateLessonScanUI(false);
+        }
+      });
+
+    } catch (error) {
+      console.error('Lesson scan error:', error);
+      showError('Failed to start lesson scan: ' + error.message);
+      updateLessonScanUI(false);
+    }
   }
 
-  function batchScanComplete(request) {
-    console.log('✅ Batch scan complete');
+  async function stopLessonScan() {
+    console.log('⏹️ Stopping lesson scan...');
+    
+    if (lessonStatus) lessonStatus.textContent = 'Stopping lesson scan...';
+    if (stopLessonBtn) stopLessonBtn.disabled = true;
+
+    chrome.runtime.sendMessage({ action: 'stopLessonScan' }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('Stop lesson scan message error:', chrome.runtime.lastError);
+        showError('Failed to stop lesson scan.');
+      } else if (!response || !response.success) {
+        console.error('Stop lesson scan failed:', response);
+        showError('Stop lesson scan failed: ' + (response?.error || 'Unknown error'));
+      }
+      
+      updateLessonScanUI(false);
+    });
+  }
+
+  function lessonScanStarted(request) {
+    if (lessonStatus) lessonStatus.textContent = 'Lesson scan active - navigate through lesson screens...';
+    if (currentScreenDisplay) currentScreenDisplay.textContent = request.currentScreen || 1;
+    
+    lessonScanData = request.screenData || [];
+    updateLessonView();
+  }
+
+  function updateLessonProgress(request) {
+    const { screenNumber, issuesCount, screenData } = request;
+    
+    if (lessonStatus) {
+      lessonStatus.textContent = `Scanning screen ${screenNumber}... (${issuesCount} issues found)`;
+    }
+    
+    if (currentScreenDisplay) currentScreenDisplay.textContent = screenNumber;
+    
+    lessonScanData = screenData || [];
+    updateLessonView();
+  }
+
+  function lessonScanComplete(request) {
+    console.log('📚 Lesson scan complete');
     
     hideProgress();
     enableButtons();
+    updateLessonScanUI(false);
     
-    const { results, batchInfo } = request;
+    const { results, screenData, summary } = request;
     
     currentResults = results.map(issue => ({
       ...issue,
-      description: prettifyDescription(issue.description),
-      isBatchResult: true,
-      batchInfo
+      description: prettifyDescription(issue.description)
     }));
     
-    chrome.storage.local.set({ lastScanResults: currentResults });
-    updateResultsView();
+    lessonScanData = screenData || [];
+    
+    chrome.storage.local.set({ 
+      lastLessonScanResults: currentResults,
+      lastLessonScanScreenData: lessonScanData 
+    });
+    
+    updateLessonView();
     
     showNotification(
-      `Batch scan complete: ${results.length} issues across ${batchInfo.totalScreens} screens`, 
+      `Lesson scan complete: ${results.length} critical issues across ${summary.totalScreens} screens`, 
       'success'
     );
   }
 
-  function updateScanProgress(pct) {
-    console.log('📊 Progress:', pct + '%');
+  function updateLessonScanUI(isActive) {
+    lessonScanActive = isActive;
     
-    const scanText = pct < 30 ? 'Analyzing page structure...' : 
-                    pct < 70 ? 'Checking accessibility compliance...' :
-                    'Finalizing scan...';
+    if (lessonScanBtn) lessonScanBtn.disabled = isActive;
+    if (stopLessonBtn) {
+      stopLessonBtn.disabled = !isActive;
+      stopLessonBtn.classList.toggle('hidden', !isActive);
+    }
+    if (quickScanBtn) quickScanBtn.disabled = isActive;
     
-    if (scanStatus) scanStatus.textContent = scanText;
-    if (progressPercent) progressPercent.textContent = `${pct}%`;
-    if (progressFill) progressFill.style.width = `${pct}%`;
+    if (lessonScanContainer) {
+      lessonScanContainer.classList.toggle('hidden', !isActive);
+    }
+  }
+
+  // ────────── UI Update Functions ──────────
+  function resetUI() {
+    if (scanStatus) {
+      scanStatus.textContent = 'Preparing scan...';
+      scanStatus.classList.remove('hidden');
+    }
     if (scanProgress) scanProgress.classList.remove('hidden');
-  }
-
-  function hideProgress() {
-    if (scanStatus) scanStatus.classList.add('hidden');
-    if (scanProgress) scanProgress.classList.add('hidden');
-  }
-
-  function enableButtons() {
-    if (scanBtn) scanBtn.disabled = false;
-    if (exportBtn) exportBtn.disabled = false;
-    if (globalScanBtn) globalScanBtn.disabled = false;
-  }
-
-  function showError(message) {
-    console.error('❌ Error:', message);
+    if (emptyState) emptyState.classList.add('hidden');
+    if (resultsContainer) resultsContainer.classList.add('hidden');
+    if (screensContainer) screensContainer.classList.add('hidden');
+    if (issuesList) issuesList.innerHTML = '';
+    if (screensList) screensList.innerHTML = '';
     
-    hideProgress();
-    enableButtons();
-    
-    if (emptyState) {
-      emptyState.classList.remove('hidden');
-      emptyState.innerHTML = `
-        <div class="text-red-500 mb-4">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" fill="none"
-               viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667
-                     1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34
-                     16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-medium text-gray-700">Error</h3>
-        <p class="text-gray-500 mt-1">${message}</p>
-      `;
+    // Disable buttons
+    if (quickScanBtn) quickScanBtn.disabled = true;
+    if (lessonScanBtn) lessonScanBtn.disabled = true;
+    if (exportBtn) exportBtn.disabled = true;
+  }
+
+  function updateResultsView() {
+    if (viewMode === 'lesson') {
+      updateLessonView();
+      return;
     }
     
-    showNotification(message, 'error');
-  }
-
-  // ────────── UI Functions ──────────
-  function updateResultsView() {
     if (currentResults.length) {
       if (emptyState) emptyState.classList.add('hidden');
       if (resultsContainer) resultsContainer.classList.remove('hidden');
+      if (screensContainer) screensContainer.classList.add('hidden');
       
       if (issueCount) issueCount.textContent = currentResults.length;
       
@@ -617,32 +718,56 @@ document.addEventListener('DOMContentLoaded', () => {
         exportBtn.classList.add('bg-green-600', 'hover:bg-green-700', 'text-white');
       }
       
-      // Update severity counts
-      const severityCounts = {
-        critical: currentResults.filter(i => i.severity === 'critical').length,
-        serious: currentResults.filter(i => i.severity === 'serious').length,
-        moderate: currentResults.filter(i => i.severity === 'moderate').length,
-        minor: currentResults.filter(i => i.severity === 'minor').length
-      };
-      
-      if (criticalCount) criticalCount.textContent = severityCounts.critical;
-      if (seriousCount) seriousCount.textContent = severityCounts.serious;
-      if (moderateCount) moderateCount.textContent = severityCounts.moderate;
-      if (minorCount) minorCount.textContent = severityCounts.minor;
-      
-      if (quickActions) quickActions.classList.remove('hidden');
-      
-      updateScoreVisualization();
+      updateSeverityCounts();
       renderIssuesList();
     } else {
       if (emptyState) emptyState.classList.remove('hidden');
       if (resultsContainer) resultsContainer.classList.add('hidden');
-      if (exportBtn) {
-        exportBtn.disabled = true;
-        exportBtn.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
-        exportBtn.classList.remove('bg-green-600', 'hover:bg-green-700', 'text-white');
-      }
+      if (screensContainer) screensContainer.classList.add('hidden');
     }
+  }
+
+  function updateLessonView() {
+    if (lessonScanData.length) {
+      if (emptyState) emptyState.classList.add('hidden');
+      if (resultsContainer) resultsContainer.classList.add('hidden');
+      if (screensContainer) screensContainer.classList.remove('hidden');
+      
+      const totalIssues = lessonScanData.reduce((sum, screen) => sum + (screen.issues?.length || 0), 0);
+      if (totalIssuesDisplay) totalIssuesDisplay.textContent = totalIssues;
+      
+      // Enable export button
+      if (exportBtn) {
+        exportBtn.disabled = false;
+        exportBtn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+        exportBtn.classList.add('bg-green-600', 'hover:bg-green-700', 'text-white');
+      }
+      
+      updateSeverityCounts();
+      renderLessonScreens();
+    } else {
+      if (emptyState) emptyState.classList.remove('hidden');
+      if (resultsContainer) resultsContainer.classList.add('hidden');
+      if (screensContainer) screensContainer.classList.add('hidden');
+    }
+  }
+
+  function updateSeverityCounts() {
+    const issues = viewMode === 'lesson' 
+      ? lessonScanData.flatMap(screen => screen.issues || [])
+      : currentResults;
+    
+    const severityCounts = {
+      critical: issues.filter(i => i.severity === 'critical').length,
+      serious: issues.filter(i => i.severity === 'serious').length,
+      moderate: issues.filter(i => i.severity === 'moderate').length,
+      minor: issues.filter(i => i.severity === 'minor').length
+    };
+    
+    if (criticalCount) criticalCount.textContent = severityCounts.critical;
+    if (seriousCount) seriousCount.textContent = severityCounts.serious;
+    if (moderateCount) moderateCount.textContent = severityCounts.moderate;
+    if (minorCount) minorCount.textContent = severityCounts.minor;
   }
 
   function renderIssuesList() {
@@ -666,12 +791,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     list.forEach(issue => {
       const el = document.createElement('div');
-      el.className = `issue-item p-4 mx-4 my-2 rounded-lg cursor-pointer ${issue.severity}`;
+      el.className = `issue-item p-4 mx-4 my-2 rounded-lg cursor-pointer border-l-4 ${getSeverityClasses(issue.severity)}`;
       el.dataset.issueId = issue.id;
-      
-      const locationText = issue.location || 'On the page';
-      const batchContext = issue.isBatchResult && issue.screenInfo ? 
-        `Screen: ${issue.screenInfo.title}` : '';
       
       el.innerHTML = `
         <div class="flex justify-between items-start">
@@ -680,43 +801,17 @@ document.addEventListener('DOMContentLoaded', () => {
             <p class="text-sm text-gray-600 mt-1">
               ${issue.description.slice(0, 120)}${issue.description.length > 120 ? '...' : ''}
             </p>
-            <div class="flex items-start mt-2 text-xs text-gray-500 space-y-1 flex-col">
-              <div class="flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span class="text-blue-600 font-medium">${locationText}</span>
-              </div>
-              ${batchContext ? `
-                <div class="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <span class="text-purple-600">${batchContext}</span>
-                </div>
-              ` : ''}
-              <div class="flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-                <code class="bg-gray-100 px-1 rounded text-gray-700">${truncate(issue.element, 50)}</code>
-              </div>
+            <div class="flex items-center mt-2 text-xs text-gray-500">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              </svg>
+              <span class="text-blue-600 font-medium">${issue.location || 'On the page'}</span>
             </div>
           </div>
           <div class="flex flex-col items-end space-y-1">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-              ${issue.severity === 'critical' ? 'bg-red-100 text-red-800' : 
-                issue.severity === 'serious' ? 'bg-orange-100 text-orange-800' :
-                issue.severity === 'moderate' ? 'bg-green-100 text-green-800' :
-                'bg-gray-100 text-gray-800'}">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSeverityBadgeClasses(issue.severity)}">
               ${issue.severity}
             </span>
-            ${issue.isBatchResult ? `
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">
-                Batch
-              </span>
-            ` : ''}
           </div>
         </div>
       `;
@@ -728,35 +823,113 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function updateScoreVisualization() {
-    const severityWeights = { critical: 10, serious: 5, moderate: 2, minor: 1 };
-    let totalWeight = 0;
+  function renderLessonScreens() {
+    if (!screensList) return;
     
-    currentResults.forEach(issue => {
-      totalWeight += severityWeights[issue.severity] || 1;
-    });
+    screensList.innerHTML = '';
     
-    const score = Math.max(0, 100 - totalWeight);
-    const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
-    const color = score >= 90 ? '#10b981' : score >= 70 ? '#f59e0b' : '#ef4444';
-    
-    const scoreRing = document.getElementById('scoreRing');
-    if (scoreRing) {
-      scoreRing.innerHTML = `
-        <svg class="w-full h-full">
-          <circle cx="60" cy="60" r="54" fill="none" stroke="#e5e7eb" stroke-width="8"/>
-          <circle cx="60" cy="60" r="54" fill="none" stroke="${color}" stroke-width="8"
-                  class="score-ring-circle"
-                  style="stroke-dashoffset: ${339.292 - (339.292 * score / 100)}"/>
-        </svg>
-        <div class="absolute inset-0 flex items-center justify-center">
-          <div class="text-center">
-            <div class="text-2xl font-bold" style="color: ${color}">${grade}</div>
-            <div class="text-xs text-gray-500">${score}/100</div>
+    if (!lessonScanData.length) {
+      screensList.innerHTML = `
+        <div class="text-center text-gray-400 py-12">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <p>No lesson screens scanned yet</p>
+        </div>`;
+      return;
+    }
+
+    lessonScanData.forEach(screen => {
+      const issues = screen.issues || [];
+      const filteredIssues = activeFilter === 'all' ? issues : issues.filter(i => i.category === activeFilter);
+      
+      const el = document.createElement('div');
+      el.className = 'screen-item p-4 mx-4 my-2 rounded-lg cursor-pointer border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors';
+      el.dataset.screenNumber = screen.screenNumber;
+      
+      const severityCounts = {
+        critical: issues.filter(i => i.severity === 'critical').length,
+        serious: issues.filter(i => i.severity === 'serious').length
+      };
+      
+      el.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div class="flex-1">
+            <div class="flex items-center space-x-2 mb-2">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                Screen ${screen.screenNumber}
+              </span>
+              ${issues.length > 0 ? `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                  severityCounts.critical > 0 ? 'bg-red-100 text-red-800' :
+                  severityCounts.serious > 0 ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
+                }">
+                  ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}
+                </span>
+              ` : `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  ✓ No issues
+                </span>
+              `}
+            </div>
+            <h4 class="font-medium text-gray-900 mb-1">${truncate(screen.title, 60)}</h4>
+            <p class="text-xs text-gray-500">${screen.url}</p>
+            ${issues.length > 0 ? `
+              <div class="mt-2 flex space-x-2">
+                ${severityCounts.critical > 0 ? `<span class="text-xs text-red-600">⚠️ ${severityCounts.critical} critical</span>` : ''}
+                ${severityCounts.serious > 0 ? `<span class="text-xs text-orange-600">⚠️ ${severityCounts.serious} serious</span>` : ''}
+              </div>
+            ` : ''}
+          </div>
+          <div class="text-right">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
           </div>
         </div>
       `;
+      
+      el.addEventListener('click', () => showScreenIssues(screen));
+      screensList.appendChild(el);
+    });
+  }
+
+  // ────────── Screen Issues View ──────────
+  function showScreenIssues(screen) {
+    console.log('Showing issues for screen:', screen.screenNumber);
+    
+    // Update currentResults to only show issues from this screen
+    currentResults = screen.issues || [];
+    viewMode = 'screen-detail';
+    
+    // Hide screens container and show results
+    if (screensContainer) screensContainer.classList.add('hidden');
+    if (resultsContainer) resultsContainer.classList.remove('hidden');
+    
+    // Update header to show screen context
+    if (issueCount) issueCount.textContent = currentResults.length;
+    
+    // Add a back button to screen list
+    const backToScreensBtn = document.createElement('button');
+    backToScreensBtn.className = 'mb-4 text-sm text-blue-600 hover:text-blue-800 flex items-center';
+    backToScreensBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      </svg>
+      Back to all screens
+    `;
+    backToScreensBtn.addEventListener('click', () => {
+      viewMode = 'lesson';
+      updateLessonView();
+      backToScreensBtn.remove();
+    });
+    
+    if (resultsContainer) {
+      resultsContainer.insertBefore(backToScreensBtn, resultsContainer.firstChild);
     }
+    
+    updateSeverityCounts();
+    renderIssuesList();
   }
 
   // ────────── Issue Detail Modal ──────────
@@ -794,7 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           ` : ''}
           
-          ${issue.isBatchResult && issue.screenInfo ? `
+          ${issue.screenInfo ? `
             <div class="detail-section">
               <h5>Screen Context</h5>
               <div class="content-box bg-purple-50 border-purple-200">
@@ -803,10 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                     </svg>
-                    <span class="text-sm font-medium text-purple-800">${issue.screenInfo.title}</span>
-                  </div>
-                  <div class="text-xs text-purple-600">
-                    Screen ${issue.screenInfo.index} of ${issue.screenInfo.total} • ${issue.screenInfo.type}
+                    <span class="text-sm font-medium text-purple-800">Screen ${issue.screenInfo.screenNumber}: ${issue.screenInfo.title}</span>
                   </div>
                 </div>
               </div>
@@ -846,14 +1016,6 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
-    // Set AI suggestion
-    if (aiSuggestion) {
-      aiSuggestion.textContent = issue.aiSuggestion || 'Getting basic accessibility recommendation...';
-      if (!issue.aiSuggestion) {
-        chrome.runtime.sendMessage({ action: 'getAiSuggestion', issue });
-      }
-    }
-
     // Reset advanced AI UI
     if (advancedAiSuggestion) {
       advancedAiSuggestion.classList.add('hidden');
@@ -866,7 +1028,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
-        <span>Get Advanced AI Analysis</span>
+        <span>Get AI Recommendation</span>
       `;
     }
 
@@ -879,23 +1041,84 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resultsContainer) {
       resultsContainer.classList.add('hidden');
     }
+    if (screensContainer) {
+      screensContainer.classList.add('hidden');
+    }
     
     highlightElement(issue.selector);
   }
 
-  function updateAiSuggestion(issueId, suggestion) {
-    const idx = currentResults.findIndex(i => i.id === issueId);
-    if (idx > -1) {
-      currentResults[idx].aiSuggestion = suggestion;
-      chrome.storage.local.set({ lastScanResults: currentResults });
-      if (issueDetail && !issueDetail.classList.contains('hidden') &&
-          detailTitle && detailTitle.textContent === currentResults[idx].title) {
-        if (aiSuggestion) aiSuggestion.textContent = suggestion;
-      }
+  // ────────── Utility Functions ──────────
+  function getSeverityClasses(severity) {
+    switch (severity) {
+      case 'critical': return 'border-red-500 bg-red-50';
+      case 'serious': return 'border-orange-500 bg-orange-50';
+      case 'moderate': return 'border-green-500 bg-green-50';
+      default: return 'border-gray-500 bg-gray-50';
     }
   }
 
-  // ────────── Helper Functions ──────────
+  function getSeverityBadgeClasses(severity) {
+    switch (severity) {
+      case 'critical': return 'bg-red-100 text-red-800';
+      case 'serious': return 'bg-orange-100 text-orange-800';
+      case 'moderate': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  }
+
+  function updateScanProgress(pct) {
+    console.log('📊 Progress:', pct + '%');
+    
+    const scanText = pct < 30 ? 'Analyzing page structure...' : 
+                    pct < 70 ? 'Checking accessibility compliance...' :
+                    'Finalizing scan...';
+    
+    if (scanStatus) scanStatus.textContent = scanText;
+    if (progressPercent) progressPercent.textContent = `${pct}%`;
+    if (progressFill) progressFill.style.width = `${pct}%`;
+    if (scanProgress) scanProgress.classList.remove('hidden');
+  }
+
+  function hideProgress() {
+    if (scanStatus) scanStatus.classList.add('hidden');
+    if (scanProgress) scanProgress.classList.add('hidden');
+    if (lessonProgress) lessonProgress.classList.add('hidden');
+  }
+
+  function enableButtons() {
+    if (quickScanBtn) quickScanBtn.disabled = false;
+    if (lessonScanBtn) lessonScanBtn.disabled = false;
+    if (exportBtn) exportBtn.disabled = false;
+  }
+
+  function showError(message) {
+    console.error('❌ Error:', message);
+    
+    hideProgress();
+    enableButtons();
+    updateLessonScanUI(false);
+    
+    if (emptyState) {
+      emptyState.classList.remove('hidden');
+      emptyState.innerHTML = `
+        <div class="text-red-500 mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667
+                     1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34
+                     16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-medium text-gray-700">Error</h3>
+        <p class="text-gray-500 mt-1">${message}</p>
+      `;
+    }
+    
+    showNotification(message, 'error');
+  }
+
   function highlightElement(selector) {
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       if (tabs[0]) {
@@ -913,29 +1136,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function exportReport(format = 'html') {
-    if (!currentResults || currentResults.length === 0) {
+    if ((!currentResults || currentResults.length === 0) && (!lessonScanData || lessonScanData.length === 0)) {
       showNotification('No scan results to export', 'error');
       return;
     }
 
-    // Show loading state
     const originalText = exportBtn.textContent;
     exportBtn.textContent = 'Exporting...';
     exportBtn.disabled = true;
 
-    // Handle PDF generation separately
-    if (format === 'pdf') {
-      generatePdfReport();
-      return;
-    }
-
-    // Handle other formats via background script
     chrome.runtime.sendMessage({ 
       action: 'exportReport', 
-      results: currentResults,
-      format: format 
+      results: viewMode === 'lesson' ? lessonScanData.flatMap(s => s.issues || []) : currentResults,
+      format: format,
+      mode: viewMode,
+      screenData: lessonScanData
     }, (response) => {
-      // Restore button state
       exportBtn.textContent = originalText;
       exportBtn.disabled = false;
 
@@ -952,97 +1168,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Export error:', response?.error);
       }
     });
-  }
-
-  async function generatePdfReport() {
-    try {
-      showNotification('Generating PDF report...', 'info');
-      
-      // Get current tab URL
-      const tabs = await new Promise(resolve => {
-        chrome.tabs.query({ active: true, currentWindow: true }, resolve);
-      });
-      const currentUrl = tabs[0]?.url || window.location.href;
-      
-      // Generate simple HTML report and trigger download
-      const htmlContent = generateSimplePdfReport({
-        url: currentUrl,
-        issues: currentResults.map(issue => ({
-          title: issue.title,
-          description: issue.description,
-          severity: issue.severity,
-          category: issue.category,
-          element: issue.element,
-          selector: issue.selector,
-          aiSuggestion: issue.advancedAiSuggestion || issue.aiSuggestion
-        }))
-      });
-      
-      // Create and download file
-      const blob = new Blob([htmlContent], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const domain = currentUrl.split('/')[2] || 'report';
-      a.download = `accessibility_report_${domain}_${timestamp}.html`;
-      
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      showNotification('PDF report downloaded successfully!', 'success');
-      
-    } catch (error) {
-      console.error('PDF generation error:', error);
-      showNotification('Failed to generate PDF report. Please try again.', 'error');
-    } finally {
-      exportBtn.textContent = 'Export';
-      exportBtn.disabled = false;
-    }
-  }
-
-  function generateSimplePdfReport(data) {
-    const timestamp = new Date().toLocaleString();
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Accessibility Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { background: linear-gradient(135deg, #10b981, #3b82f6); color: white; padding: 20px; border-radius: 8px; }
-        .issue { margin: 20px 0; padding: 15px; border-radius: 8px; border-left: 4px solid #e5e7eb; }
-        .critical { border-left-color: #ef4444; background: #fef2f2; }
-        .serious { border-left-color: #f59e0b; background: #fffbeb; }
-        .moderate { border-left-color: #10b981; background: #f0fdf4; }
-        .minor { border-left-color: #6b7280; background: #f9fafb; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🛡️ Accessibility Report</h1>
-        <p>Generated on ${timestamp}</p>
-        <p>URL: ${data.url}</p>
-    </div>
-    
-    <h2>Summary</h2>
-    <p>Total Issues: ${data.issues.length}</p>
-    
-    <h2>Issues</h2>
-    ${data.issues.map((issue, index) => `
-        <div class="issue ${issue.severity}">
-            <h3>${index + 1}. ${issue.title}</h3>
-            <p><strong>Severity:</strong> ${issue.severity}</p>
-            <p><strong>Description:</strong> ${issue.description}</p>
-            ${issue.aiSuggestion ? `<p><strong>AI Suggestion:</strong> ${issue.aiSuggestion}</p>` : ''}
-        </div>
-    `).join('')}
-</body>
-</html>`;
   }
 
   function showNotification(message, type = 'info') {

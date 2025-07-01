@@ -10,8 +10,52 @@
   
   <!-- Custom Styles -->
   <style>
+    /* Import better fonts for accessibility */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
     /*——————————————————————————————————————————————
-      Force the extension popup to always be 480×700px
+      Enhanced Color Palette - Eye-friendly orange/black/grey
+    ——————————————————————————————————————————————*/
+    :root {
+      /* Primary Colors - Warmer, softer oranges */
+      --primary-orange: #ff7b47;
+      --primary-orange-dark: #e85d04;
+      --primary-orange-light: #ff9770;
+      --primary-orange-pale: #ffb896;
+      
+      /* Neutral Greys - Better contrast ratios */
+      --grey-50: #fafafa;
+      --grey-100: #f5f5f5;
+      --grey-200: #e5e5e5;
+      --grey-300: #d4d4d4;
+      --grey-400: #a3a3a3;
+      --grey-500: #737373;
+      --grey-600: #525252;
+      --grey-700: #404040;
+      --grey-800: #262626;
+      --grey-900: #171717;
+      
+      /* Blacks - Softer, warmer blacks */
+      --black-50: #1c1c1c;
+      --black-100: #171717;
+      --black-200: #121212;
+      --black-300: #0d0d0d;
+      --black-400: #080808;
+      
+      /* Semantic Colors */
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --info: #3b82f6;
+      
+      /* Shadows and Effects */
+      --shadow-primary: 0 4px 20px rgba(255, 123, 71, 0.15);
+      --shadow-secondary: 0 2px 10px rgba(0, 0, 0, 0.1);
+      --shadow-large: 0 8px 30px rgba(255, 123, 71, 0.2);
+    }
+
+    /*——————————————————————————————————————————————
+      Base Styles
     ——————————————————————————————————————————————*/
     html, body {
       width: 480px !important;
@@ -19,154 +63,323 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #0a0a0a;
+      background: var(--black-100);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      color: var(--grey-100);
+      line-height: 1.5;
     }
 
-    /* Custom scrollbar with orange theme */
+    /* Modal expansion */
+    body.modal-open {
+      width: 700px !important;
+      height: 90vh !important;
+    }
+
+    /* Enhanced scrollbar */
     body {
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: #ff6b1a #1a1a1a;
+      scrollbar-color: var(--primary-orange) var(--black-50);
     }
 
     body::-webkit-scrollbar {
-      width: 8px;
+      width: 6px;
     }
 
     body::-webkit-scrollbar-track {
-      background: #1a1a1a;
+      background: var(--black-50);
+      border-radius: 3px;
     }
 
     body::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #ff6b1a, #ff8c42);
-      border-radius: 4px;
+      background: linear-gradient(180deg, var(--primary-orange), var(--primary-orange-dark));
+      border-radius: 3px;
     }
 
     body::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(135deg, #e55a15, #ff6b1a);
+      background: linear-gradient(180deg, var(--primary-orange-light), var(--primary-orange));
     }
 
-    /* When modal is open, keep same popup size */
-    body.modal-open {
-      width: 480px !important;
-      height: 100% !important;
+    /*——————————————————————————————————————————————
+      Enhanced Typography
+    ——————————————————————————————————————————————*/
+    h1, h2, h3, h4, h5, h6 {
+      font-weight: 600;
+      line-height: 1.3;
+      letter-spacing: -0.025em;
     }
 
-    /* Issue severity indicators with black/orange theme */
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.25rem; }
+    h3 { font-size: 1.125rem; }
+    h4 { font-size: 1rem; }
+
+    p, span {
+      line-height: 1.6;
+    }
+
+    /*——————————————————————————————————————————————
+      Enhanced Issue Items
+    ——————————————————————————————————————————————*/
     .issue-item {
-      border-left-width: 4px;
-      transition: all 0.3s ease;
+      background: linear-gradient(135deg, var(--black-50) 0%, var(--grey-900) 100%);
+      border: 1px solid var(--grey-800);
+      border-left: 4px solid var(--grey-600);
+      border-radius: 12px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       cursor: pointer;
       position: relative;
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      border: 1px solid #333;
-      color: #e0e0e0;
+      overflow: hidden;
+      margin: 8px 16px;
+      padding: 16px;
+    }
+    
+    .issue-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, transparent 0%, rgba(255, 123, 71, 0.05) 100%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
     }
     
     .issue-item:hover {
-      transform: translateX(6px);
-      box-shadow: 0 8px 25px rgba(255, 107, 26, 0.3);
-      background: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-large);
+      border-color: var(--grey-700);
     }
     
-    .issue-item::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255, 107, 26, 0.15));
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-    
-    .issue-item:hover::after {
+    .issue-item:hover::before {
       opacity: 1;
     }
+
+    .issue-item:focus-visible {
+      outline: 2px solid var(--primary-orange);
+      outline-offset: 2px;
+    }
+
+    /* Enhanced severity colors with better contrast */
+    .critical { 
+      border-left-color: #dc2626;
+      background: linear-gradient(135deg, var(--black-50) 0%, #1a0f0f 100%);
+    }
+    .serious  { 
+      border-left-color: var(--primary-orange);
+      background: linear-gradient(135deg, var(--black-50) 0%, #1a1410 100%);
+    }
+    .moderate { 
+      border-left-color: #eab308;
+      background: linear-gradient(135deg, var(--black-50) 0%, #1a1810 100%);
+    }
+    .minor    { 
+      border-left-color: var(--grey-500);
+    }
+
+    /*——————————————————————————————————————————————
+      Enhanced Screen Items
+    ——————————————————————————————————————————————*/
+    .screen-item {
+      background: linear-gradient(135deg, var(--black-50) 0%, var(--grey-900) 100%);
+      border: 1px solid var(--grey-800);
+      border-radius: 12px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      margin: 8px 16px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
     
-    /* Enhanced text visibility for issue items */
+    .screen-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, transparent 0%, rgba(255, 123, 71, 0.03) 100%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    
+    .screen-item:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-primary);
+      border-color: var(--primary-orange-pale);
+    }
+    
+    .screen-item:hover::before {
+      opacity: 1;
+    }
+
+    .screen-item:focus-visible {
+      outline: 2px solid var(--primary-orange);
+      outline-offset: 2px;
+    }
+
+    /*——————————————————————————————————————————————
+      Enhanced Text Visibility
+    ——————————————————————————————————————————————*/
     .issue-item h4,
-    .issue-item .issue-title {
-      color: #f0f0f0 !important;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 107, 26, 0.3);
-      font-weight: 700;
+    .screen-item h4 {
+      color: var(--grey-100) !important;
+      font-weight: 600;
       font-size: 0.95rem;
+      margin-bottom: 6px;
     }
     
     .issue-item p,
-    .issue-item .issue-description,
-    .issue-item .issue-details {
-      color: #d0d0d0 !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 8px rgba(255, 107, 26, 0.2);
+    .screen-item p {
+      color: var(--grey-300) !important;
+      font-weight: 400;
+      font-size: 0.875rem;
+    }
+    
+    .issue-item .text-xs,
+    .screen-item .text-xs {
+      color: var(--grey-400) !important;
+      font-size: 0.75rem;
+    }
+
+    /*——————————————————————————————————————————————
+      Enhanced Buttons
+    ——————————————————————————————————————————————*/
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary-orange) 0%, var(--primary-orange-dark) 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      padding: 12px 20px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: var(--shadow-primary);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-large);
+      background: linear-gradient(135deg, var(--primary-orange-light) 0%, var(--primary-orange) 100%);
+    }
+    
+    .btn-primary:hover::before {
+      left: 100%;
+    }
+
+    .btn-primary:focus-visible {
+      outline: 2px solid var(--primary-orange-light);
+      outline-offset: 2px;
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, var(--grey-800) 0%, var(--grey-700) 100%);
+      color: var(--grey-200);
+      border: 1px solid var(--grey-600);
+      border-radius: 10px;
       font-weight: 500;
+      font-size: 0.875rem;
+      padding: 12px 20px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
-    .issue-item .issue-location,
-    .issue-item .location-info {
-      color: #bbb !important;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+
+    .btn-secondary:hover {
+      background: linear-gradient(135deg, var(--grey-700) 0%, var(--grey-600) 100%);
+      border-color: var(--primary-orange);
+      color: var(--primary-orange-light);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-secondary);
+    }
+
+    .btn-secondary:focus-visible {
+      outline: 2px solid var(--primary-orange);
+      outline-offset: 2px;
+    }
+
+    /*——————————————————————————————————————————————
+      Scan Mode Toggle Enhancement
+    ——————————————————————————————————————————————*/
+    .scan-mode-toggle {
+      background: linear-gradient(135deg, var(--grey-800) 0%, var(--grey-700) 100%);
+      color: var(--grey-200);
+      border: 1px solid var(--grey-600);
+      border-radius: 12px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       font-weight: 500;
-    }
-    
-    .issue-item .severity-badge {
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
-      font-weight: 700;
-    }
-    
-    .critical { 
-      border-left-color: #ff3333; 
-      box-shadow: inset 0 0 0 1px rgba(255, 51, 51, 0.2);
-    }
-    .serious  { 
-      border-left-color: #ff6b1a; 
-      box-shadow: inset 0 0 0 1px rgba(255, 107, 26, 0.2);
-    }
-    .moderate { 
-      border-left-color: #ffaa00; 
-      box-shadow: inset 0 0 0 1px rgba(255, 170, 0, 0.2);
-    }
-    .minor    { 
-      border-left-color: #888888; 
-      box-shadow: inset 0 0 0 1px rgba(136, 136, 136, 0.2);
+      position: relative;
+      overflow: hidden;
     }
 
-    /* Enhanced animations */
-    @keyframes slideIn { 
-      from { opacity: 0; transform: translateY(-20px); } 
-      to { opacity: 1; transform: translateY(0); } 
+    .scan-mode-toggle::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, var(--primary-orange) 0%, var(--primary-orange-dark) 100%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
     }
-    @keyframes fadeIn  { 
-      from { opacity: 0; } 
-      to { opacity: 1; } 
-    }
-    @keyframes glow {
-      0%, 100% { box-shadow: 0 0 20px rgba(255, 107, 26, 0.3); }
-      50% { box-shadow: 0 0 30px rgba(255, 107, 26, 0.6); }
-    }
-    
-    .animate-slide-in { animation: slideIn 0.4s ease-out; }
-    .animate-fade-in  { animation: fadeIn  0.3s ease-out; }
-    .animate-glow { animation: glow 2s ease-in-out infinite; }
 
-    @keyframes pulse {
-      0%,100% { opacity: 1; }
-      50%     { opacity: 0.6; }
+    .scan-mode-toggle.active::before {
+      opacity: 1;
     }
-    .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4,0,0.6,1) infinite; }
 
-    /* Enhanced progress bar */
+    .scan-mode-toggle.active {
+      color: white;
+      border-color: var(--primary-orange);
+      box-shadow: var(--shadow-primary);
+      transform: scale(1.02);
+    }
+
+    .scan-mode-toggle:hover:not(.active) {
+      background: linear-gradient(135deg, var(--grey-700) 0%, var(--grey-600) 100%);
+      border-color: var(--primary-orange-pale);
+      color: var(--primary-orange-light);
+    }
+
+    .scan-mode-toggle:focus-visible {
+      outline: 2px solid var(--primary-orange);
+      outline-offset: 2px;
+    }
+
+    .scan-mode-toggle > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    /*——————————————————————————————————————————————
+      Enhanced Progress Bar
+    ——————————————————————————————————————————————*/
     .progress-bar {
       height: 6px;
-      background: linear-gradient(90deg, #1a1a1a, #333);
+      background: var(--grey-800);
       border-radius: 3px;
       overflow: hidden;
-      border: 1px solid #444;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
     }
     
     .progress-fill {
       height: 100%;
-      background: linear-gradient(90deg, #ff6b1a 0%, #ff8c42 50%, #ff6b1a 100%);
-      transition: width 0.4s ease;
+      background: linear-gradient(90deg, var(--primary-orange) 0%, var(--primary-orange-light) 50%, var(--primary-orange) 100%);
+      transition: width 0.3s ease;
       border-radius: 3px;
-      box-shadow: 0 0 20px rgba(255, 107, 26, 0.6);
       position: relative;
     }
 
@@ -177,20 +390,18 @@
       left: -100%;
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
       animation: shimmer 2s infinite;
     }
 
-    /* Enhanced Modal CSS */
+    /*——————————————————————————————————————————————
+      Enhanced Modal
+    ——————————————————————————————————————————————*/
     #issueDetail {
       backdrop-filter: blur(12px);
-      background-color: rgba(0, 0, 0, 0.85);
-      transition: all 0.4s ease;
+      background-color: rgba(0, 0, 0, 0.8);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       z-index: 1000;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      width: 100%;
-      height: 100%;
     }
     
     #issueDetail.hidden {
@@ -199,28 +410,18 @@
       visibility: hidden;
     }
     
-    #issueDetail:not(.hidden) {
-      opacity: 1;
-      pointer-events: auto;
-      visibility: visible;
-    }
-    
     .modal-content {
-      transform: scale(0.9) translateY(20px);
+      background: linear-gradient(135deg, var(--black-100) 0%, var(--black-50) 100%);
+      border: 1px solid var(--grey-700);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      transform: scale(0.95) translateY(20px);
       opacity: 0;
-      transition: all 0.4s ease;
-      position: relative;
-      z-index: 1001;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      max-height: 90vh;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      width: 100%;
-      height: 100%;
-      max-width: none;
-      max-height: none;
-      margin: 0;
-      overflow: hidden;
-      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-      border: 1px solid #333;
     }
     
     #issueDetail:not(.hidden) .modal-content {
@@ -228,606 +429,779 @@
       opacity: 1;
     }
 
-    /* Modal header with enhanced gradient */
     .modal-header {
-      position: relative;
-      z-index: 1002;
-      flex-shrink: 0;
-      padding: 1.5rem;
-      background: linear-gradient(135deg, #000 0%, #1a1a1a 50%, #ff6b1a 100%);
-      border-bottom: 2px solid #ff6b1a;
+      background: linear-gradient(135deg, var(--black-200) 0%, var(--grey-900) 50%, var(--primary-orange) 100%);
+      border-bottom: 1px solid var(--grey-700);
+      border-radius: 16px 16px 0 0;
+      padding: 24px;
     }
     
     .modal-header h3 {
+      color: white;
       font-size: 1.25rem;
-      line-height: 1.3;
-      margin-bottom: 0.75rem;
-      color: #fff;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    }
-    
-    .modal-header .severity-category {
-      font-size: 0.875rem;
-      color: #ffcc99;
+      font-weight: 600;
+      margin-bottom: 8px;
     }
 
-    /* Modal body with dark theme */
     .modal-body {
-      overflow-y: auto;
-      flex: 1;
-      padding: 1.5rem;
-      background: #0a0a0a;
-      color: #e0e0e0;
+      background: var(--black-100);
+      color: white;
+      padding: 24px;
+      max-height: none !important;
+      overflow-y: visible;
       scrollbar-width: thin;
-      scrollbar-color: #ff6b1a #1a1a1a;
+      scrollbar-color: var(--primary-orange) var(--grey-800);
+    }
+    
+    .modal-body * {
+      color: white !important;
     }
     
     .modal-body::-webkit-scrollbar {
-      width: 8px;
+      width: 6px;
     }
     
     .modal-body::-webkit-scrollbar-track {
-      background: #1a1a1a;
+      background: var(--grey-800);
+      border-radius: 3px;
     }
     
     .modal-body::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #ff6b1a, #ff8c42);
-      border-radius: 4px;
-    }
-    
-    .modal-body::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(135deg, #e55a15, #ff6b1a);
+      background: var(--primary-orange);
+      border-radius: 3px;
     }
 
-    /* Enhanced buttons */
-    .modal-header button {
-      position: relative;
-      z-index: 1003;
-      min-width: 44px;
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      border-radius: 0.75rem;
-      padding: 0.75rem;
-      transition: all 0.3s;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    
-    #backBtn:hover, #closeDetail:hover {
-      background: rgba(255, 107, 26, 0.3);
-      border-color: rgba(255, 107, 26, 0.5);
-      transform: scale(1.05);
-    }
-
-    /* Detail sections with dark theme */
-    .detail-section {
-      margin-bottom: 1.5rem;
-    }
-    
-    .detail-section h5 {
-      font-size: 0.875rem;
-      font-weight: 700;
-      color: #ff6b1a;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.75rem;
-    }
-    
-    .detail-section .content-box {
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      border: 1px solid #444;
-      border-radius: 0.75rem;
-      padding: 1rem;
-      color: #e0e0e0;
-    }
-    
-    .detail-section .content-box.code {
-      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-      color: #ff6b1a;
-      font-family: 'Monaco','Menlo','Ubuntu Mono',monospace;
-      border: 1px solid #ff6b1a;
-    }
-    
-    .issue-description {
-      font-size: 0.9rem;
-      line-height: 1.6;
-      color: #d0d0d0;
-    }
-
-    /* Export dropdown with dark theme */
-    #exportDropdown {
-      transform-origin: top right;
-      transition: all 0.3s ease;
-      position: absolute;
-      right: 0;
-      top: 100%;
-      z-index: 50;
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      border: 1px solid #444;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
-    }
-    
-    #exportDropdown.hidden {
-      opacity: 0;
-      transform: scale(0.9) translateY(-10px);
-      pointer-events: none;
-    }
-    
-    #exportDropdown:not(.hidden) {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-      pointer-events: auto;
-    }
-
-    /* Enhanced notifications */
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 1000;
-      animation: slideIn 0.4s ease-out;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      border: 1px solid #ff6b1a;
-      color: #e0e0e0;
-    }
-
-    /* Enhanced filter pills */
+    /*——————————————————————————————————————————————
+      Enhanced Filter Pills
+    ——————————————————————————————————————————————*/
     .filter-pill {
-      transition: all 0.3s ease;
+      background: linear-gradient(135deg, var(--grey-800) 0%, var(--grey-700) 100%);
+      color: var(--grey-300);
+      border: 1px solid var(--grey-600);
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
       overflow: hidden;
-      background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
-      color: #d0d0d0;
-      border: 1px solid #444;
     }
     
     .filter-pill::before {
       content: '';
       position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, #ff6b1a 0%, #ff8c42 100%);
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, var(--primary-orange) 0%, var(--primary-orange-dark) 100%);
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: opacity 0.2s ease;
     }
     
-    .filter-pill:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(255, 107, 26, 0.3);
+    .filter-pill.active::before {
+      opacity: 1;
     }
     
     .filter-pill.active {
-      background: transparent;
       color: white;
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(255, 107, 26, 0.4);
+      border-color: var(--primary-orange);
+      box-shadow: var(--shadow-primary);
     }
     
-    .filter-pill.active::before { opacity: 1; }
-    .filter-pill span { position: relative; z-index: 1; }
+    .filter-pill:hover:not(.active) {
+      background: linear-gradient(135deg, var(--grey-700) 0%, var(--grey-600) 100%);
+      color: var(--primary-orange-light);
+      border-color: var(--primary-orange-pale);
+    }
 
-    /* Enhanced button effects */
-    .btn-primary {
+    .filter-pill span {
       position: relative;
-      overflow: hidden;
-      background: linear-gradient(135deg, #ff6b1a 0%, #ff8c42 100%);
-      transition: all 0.3s ease;
-      border: none;
-      box-shadow: 0 4px 15px rgba(255, 107, 26, 0.3);
-    }
-    
-    .btn-primary:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 8px 25px rgba(255, 107, 26, 0.5);
-    }
-    
-    .btn-primary::before {
-      content: '';
-      position: absolute;
-      top: 50%; left: 50%;
-      width: 0; height: 0;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.3);
-      transform: translate(-50%, -50%);
-      transition: width 0.4s, height 0.4s;
-    }
-    
-    .btn-primary:hover::before {
-      width: 400px;
-      height: 400px;
+      z-index: 1;
     }
 
-    .btn-secondary {
-      background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
-      color: #d0d0d0;
-      border: 1px solid #444;
-      transition: all 0.3s ease;
+    /*——————————————————————————————————————————————
+      Enhanced Severity Badges
+    ——————————————————————————————————————————————*/
+    .severity-badge {
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.75rem;
+      padding: 4px 10px;
     }
 
-    .btn-secondary:hover {
-      background: linear-gradient(135deg, #3a3a3a 0%, #2d2d2d 100%);
-      border-color: #ff6b1a;
-      color: #ff6b1a;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(255, 107, 26, 0.2);
+    .bg-red-100 { background: rgba(220, 38, 38, 0.2); color: #fca5a5; }
+    .bg-orange-100 { background: rgba(255, 123, 71, 0.2); color: var(--primary-orange-pale); }
+    .bg-yellow-100 { background: rgba(234, 179, 8, 0.2); color: #fde047; }
+    .bg-gray-100 { background: rgba(115, 115, 115, 0.2); color: var(--grey-400); }
+
+    /*——————————————————————————————————————————————
+      Enhanced Glass Effect
+    ——————————————————————————————————————————————*/
+    .glass-effect {
+      background: rgba(26, 26, 26, 0.6);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 123, 71, 0.2);
+      border-radius: 12px;
     }
 
-    /* Smooth scrolling */
-    * { scroll-behavior: smooth; }
+    /*——————————————————————————————————————————————
+      Enhanced Animations
+    ——————————————————————————————————————————————*/
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
 
-    /* Enhanced loading shimmer */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(255, 123, 71, 0.3); }
+      50% { box-shadow: 0 0 30px rgba(255, 123, 71, 0.5); }
+    }
+
     @keyframes shimmer {
-      0%   { transform: translateX(-100%); }
+      0% { transform: translateX(-100%); }
       100% { transform: translateX(100%); }
     }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .animate-slide-in { animation: slideIn 0.4s ease-out; }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    .animate-glow { animation: glow 2s ease-in-out infinite; }
+    .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+    /*——————————————————————————————————————————————
+      Detail Section Enhancements
+    ——————————————————————————————————————————————*/
+    .detail-section {
+      margin-bottom: 20px;
+    }
     
-    .shimmer {
-      background: linear-gradient(90deg, #2d2d2d 25%, #444 50%, #2d2d2d 75%);
-      background-size: 200% 100%;
-      animation: shimmer 2s infinite;
-      position: relative;
-      overflow: hidden;
+    .detail-section h5 {
+      color: var(--primary-orange) !important;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
     }
-
-    .shimmer::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 107, 26, 0.3), transparent);
-      animation: shimmer 2s infinite;
-    }
-
-    /* Card enhancements */
-    .card {
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      border: 1px solid #444;
-      color: #e0e0e0;
-      transition: all 0.3s ease;
-    }
-
-    .card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 12px 30px rgba(255, 107, 26, 0.2);
-      border-color: #ff6b1a;
-    }
-
-    /* Text colors for dark theme with enhanced visibility */
-    .text-primary { 
-      color: #ff6b1a; 
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-    }
-    .text-secondary { 
-      color: #d0d0d0; 
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-    }
-    .text-accent { 
-      color: #999; 
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-    }
-    .text-light { 
-      color: #f0f0f0; 
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-    }
-
-    /* Enhanced visibility for all text elements */
-    h1, h2, h3, h4, h5, h6 {
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 107, 26, 0.3);
-    }
-
-    p, span, div {
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-    }
-
-    /* Specific enhancements for issue list text */
-    #issuesList .issue-item * {
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 8px rgba(255, 107, 26, 0.2);
-    }
-
-    /* Button text enhancement */
-    button span, button {
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-    }
-
-    /* Background variants */
-    .bg-primary { background: linear-gradient(135deg, #ff6b1a 0%, #ff8c42 100%); }
-    .bg-secondary { background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); }
-    .bg-accent { background: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%); }
-    .bg-dark { background: #0a0a0a; }
-
-    /* Responsive tweaks */
-    @media (max-height: 600px) {
-      .modal-content { height: 100%; width: 100%; margin: 0; }
-      .modal-header  { padding: 1rem 1.5rem; }
-      .modal-body    { padding: 1rem 1.5rem; }
-    }
-
-    /* Custom utility classes */
     
-    .gradient-text {
-      color: #ff6b1a;
+    .detail-section .content-box {
+      background: linear-gradient(135deg, var(--black-50) 0%, var(--grey-900) 100%);
+      border: 1px solid var(--grey-700);
+      border-radius: 8px;
+      padding: 12px;
+      color: white !important;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    
+    .detail-section .content-box * {
+      color: white !important;
+    }
+    
+    .detail-section .content-box.code {
+      background: linear-gradient(135deg, var(--black-200) 0%, var(--black-100) 100%);
+      color: var(--primary-orange-light) !important;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+      border-color: var(--primary-orange-dark);
+      font-size: 0.8rem;
+    }
+    
+    .detail-section .content-box.code * {
+      color: var(--primary-orange-light) !important;
     }
 
-    .glass-effect {
-      background: rgba(26, 26, 26, 0.8);
+    /*——————————————————————————————————————————————
+      Enhanced Notifications
+    ——————————————————————————————————————————————*/
+    .notification {
+      background: linear-gradient(135deg, var(--black-50) 0%, var(--grey-900) 100%);
+      border: 1px solid var(--primary-orange);
+      border-radius: 12px;
+      color: var(--grey-100);
+      box-shadow: var(--shadow-large);
       backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 107, 26, 0.2);
+    }
+
+    /*——————————————————————————————————————————————
+      AI Suggestion Enhancements
+    ——————————————————————————————————————————————*/
+    .ai-explanation {
+      background: linear-gradient(135deg, var(--black-50) 0%, var(--grey-900) 100%);
+      border: 1px solid var(--grey-700);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      color: white !important;
+    }
+    
+    .ai-explanation * {
+      color: white !important;
+    }
+
+    .code-block {
+      background: var(--black-200);
+      border: 1px solid var(--primary-orange-dark);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      min-height: auto;
+    }
+
+    .code-header {
+      background: linear-gradient(135deg, var(--primary-orange) 0%, var(--primary-orange-dark) 100%);
+      color: white;
+      padding: 8px 16px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .copy-code-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 4px 8px;
+      color: white;
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .copy-code-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: scale(1.05);
+    }
+
+    .code-content {
+      padding: 8px 12px !important;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.2 !important;
+      color: white !important;
+      overflow-x: auto;
+      white-space: pre !important;
+      margin: 0 !important;
+    }
+    
+    .code-content * {
+      color: white !important;
+      font-family: inherit !important;
+      line-height: inherit !important;
+    }
+    
+    .code-content pre {
+      margin: 0 !important;
+      padding: 0 !important;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    
+    .code-content code {
+      display: block;
+      margin: 0 !important;
+      padding: 0 !important;
+      line-height: inherit;
+    }
+    
+    /* AI suggestion container */
+    #aiSuggestion {
+      color: white !important;
+    }
+    
+    #aiSuggestion * {
+      color: white !important;
+    }
+    
+    #advancedAiSuggestion {
+      color: white !important;
+    }
+    
+    #advancedAiSuggestion * {
+      color: white !important;
+    }
+
+    /* AI suggestions section header */
+    .ai-suggestions {
+      border-top: 1px solid var(--grey-700);
+      padding-top: 24px;
+      margin-top: 24px;
+      margin-bottom: 0 !important;
+    }
+    
+    .ai-suggestions h4 {
+      color: white !important;
+    }
+
+    /*——————————————————————————————————————————————
+      Focus Management and Accessibility
+    ——————————————————————————————————————————————*/
+    *:focus-visible {
+      outline: 2px solid var(--primary-orange);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    /* High contrast mode support */
+    @media (prefers-contrast: high) {
+      :root {
+        --primary-orange: #ff8c42;
+        --grey-800: #1a1a1a;
+        --grey-700: #2d2d2d;
+        --grey-600: #404040;
+      }
+    }
+
+    /* Reduced motion support */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Dark mode enhancement (already dark, but ensuring consistency) */
+    @media (prefers-color-scheme: dark) {
+      html, body {
+        color-scheme: dark;
+      }
+    }
+
+    /*——————————————————————————————————————————————
+      Utility Classes
+    ——————————————————————————————————————————————*/
+    .text-primary { color: var(--primary-orange); }
+    .text-secondary { color: var(--grey-300); }
+    .text-accent { color: var(--grey-400); }
+    .text-light { color: var(--grey-100); }
+    .text-white { color: white; }
+
+    .bg-primary { background: linear-gradient(135deg, var(--primary-orange) 0%, var(--primary-orange-dark) 100%); }
+    .bg-secondary { background: linear-gradient(135deg, var(--black-50) 0%, var(--grey-900) 100%); }
+    .bg-accent { background: linear-gradient(135deg, var(--grey-800) 0%, var(--grey-700) 100%); }
+    .bg-dark { background: var(--black-100); }
+
+    /*——————————————————————————————————————————————
+      Responsive Enhancements
+    ——————————————————————————————————————————————*/
+    @media (max-height: 600px) {
+      .modal-content { 
+        height: 100%; 
+        width: 100%; 
+        margin: 0; 
+        border-radius: 0;
+      }
+      .modal-header { 
+        padding: 16px 20px; 
+        border-radius: 0;
+      }
+      .modal-body { 
+        padding: 16px 20px;
+        max-height: 50vh;
+        overflow-y: auto;
+      }
+    }
+
+    @media (max-height: 700px) {
+      .modal-body {
+        max-height: 50vh;
+        overflow-y: auto;
+      }
+    }
+
+    /*——————————————————————————————————————————————
+      Loading States
+    ——————————————————————————————————————————————*/
+    .loading-shimmer {
+      background: linear-gradient(90deg, var(--grey-800) 25%, var(--grey-700) 50%, var(--grey-800) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    /*——————————————————————————————————————————————
+      Enhanced Status Indicators
+    ——————————————————————————————————————————————*/
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .status-healthy { 
+      background: linear-gradient(135deg, var(--success), #16a34a);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+    }
+    .status-warning { 
+      background: linear-gradient(135deg, var(--warning), #d97706);
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+    }
+    .status-error { 
+      background: linear-gradient(135deg, var(--error), #dc2626);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
     }
   </style>
 </head>
 <body class="bg-dark text-light">
-  <!-- Header with Enhanced Black-Orange Gradient -->
+  <!-- Enhanced Header with Improved Gradient and Spacing -->
   <header class="bg-gradient-to-br from-black via-gray-900 to-orange-600 text-white p-6 shadow-2xl relative overflow-hidden">
-    <!-- Animated background pattern -->
-    <div class="absolute inset-0 opacity-10">
+    <!-- Subtle animated background pattern -->
+    <div class="absolute inset-0 opacity-5">
       <div class="absolute top-0 left-0 w-full h-full">
-        <div class="absolute top-4 left-4 w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+        <div class="absolute top-4 left-4 w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
         <div class="absolute top-8 right-8 w-1 h-1 bg-white rounded-full animate-pulse" style="animation-delay: 0.5s;"></div>
-        <div class="absolute bottom-6 left-12 w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" style="animation-delay: 1s;"></div>
+        <div class="absolute bottom-6 left-12 w-1.5 h-1.5 bg-orange-300 rounded-full animate-pulse" style="animation-delay: 1s;"></div>
         <div class="absolute bottom-12 right-6 w-1 h-1 bg-white rounded-full animate-pulse" style="animation-delay: 1.5s;"></div>
       </div>
-      <svg class="absolute bottom-0 left-0 w-full opacity-30" viewBox="0 0 1440 320">
-        <path fill="currentColor" fill-opacity="0.4" d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,138.7C672,149,768,203,864,213.3C960,224,1056,192,1152,165.3C1248,139,1344,117,1392,106.7L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-      </svg>
     </div>
     
     <div class="relative z-10 flex items-center justify-between">
       <div class="flex items-center space-x-4">
-        <div class="glass-effect p-3 rounded-xl animate-glow">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        <div class="glass-effect p-3 rounded-xl">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-orange-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
           </svg>
         </div>
         <div>
-          <h1 class="text-2xl font-bold gradient-text">Inspark A11y</h1>
-          <p class="text-orange-200 text-sm font-medium">Accessibility Testing Assistant</p>
+          <h1 class="text-2xl font-bold text-primary">Inspark A11y</h1>
+          <p class="text-orange-200 text-sm font-medium">Lesson Accessibility Testing</p>
         </div>
       </div>
       <div class="text-right">
-        <div class="text-xs text-orange-300 font-semibold">v1.0.0</div>
+        <div class="text-xs text-orange-300 font-semibold">v2.0.0</div>
         <div class="text-xs text-orange-200 mt-1 flex items-center">
-          <span class="w-2 h-2 bg-orange-400 rounded-full mr-1 animate-pulse"></span>
-          Powered by AI
+          <span class="status-indicator status-healthy"></span>
+          <span>Powered by AI</span>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Action Buttons -->
-  <div class="p-6 bg-secondary border-b border-gray-700">
-    <div class="grid grid-cols-3 gap-4">
-      <button id="scanBtn" class="btn-primary group text-white py-4 px-4 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-900 relative overflow-hidden">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mx-auto mb-2 group-hover:animate-pulse-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-        <span class="text-sm relative z-10">Scan Page</span>
-      </button>
-      
-      <button id="globalScanBtn" class="btn-secondary group py-4 px-4 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-900 relative overflow-hidden">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        <span class="text-sm relative z-10">Scan Lesson</span>
-      </button>
-      
-      <div class="relative">
-        <button id="exportBtn" class="btn-secondary w-full py-4 px-4 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900 cursor-not-allowed opacity-50 relative overflow-hidden" disabled>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-          </svg>
-          <span class="text-sm relative z-10">Export</span>
-        </button>
-        
-        <div id="exportDropdown" class="absolute right-0 mt-2 w-56 rounded-xl shadow-2xl z-50 hidden overflow-hidden">
-          <div class="py-2">
-            <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-light hover:bg-accent hover:text-primary transition-all duration-200" data-format="pdf">
-              <span class="text-lg">📋</span>
-              <div>
-                <div class="font-semibold">PDF Report</div>
-                <div class="text-xs text-accent">Professional accessibility report</div>
-              </div>
-            </button>
-          </div>
+  <!-- Enhanced Scan Mode Selection -->
+  <div class="p-5 border-b border-gray-700">
+    <div class="grid grid-cols-2 gap-3">
+      <button id="quickScanBtn" class="scan-mode-toggle py-4 px-4 rounded-xl text-sm font-medium transition-all focus:outline-none" role="button" aria-describedby="quick-scan-desc">
+        <div class="flex items-center justify-center space-x-2 mb-1">
+          <span class="text-lg" aria-hidden="true">⚡</span>
+          <span>Quick Scan</span>
         </div>
+        <div id="quick-scan-desc" class="text-xs opacity-80">Current screen only</div>
+      </button>
+      
+      <button id="lessonScanBtn" class="scan-mode-toggle py-4 px-4 rounded-xl text-sm font-medium transition-all focus:outline-none" role="button" aria-describedby="lesson-scan-desc">
+        <div class="flex items-center justify-center space-x-2 mb-1">
+          <span class="text-lg" aria-hidden="true">📚</span>
+          <span>Lesson Scan</span>
+        </div>
+        <div id="lesson-scan-desc" class="text-xs opacity-80">All lesson screens</div>
+      </button>
+    </div>
+    
+    <!-- Enhanced Stop Lesson Scan Button -->
+    <button id="stopLessonBtn" class="hidden w-full mt-4 py-3 px-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900">
+      <div class="flex items-center justify-center space-x-2">
+        <span aria-hidden="true">⏹️</span>
+        <span>Stop Lesson Scan</span>
+      </div>
+    </button>
+  </div>
+
+  <!-- Enhanced Lesson Scan Status -->
+  <div id="lessonScanContainer" class="hidden p-5 bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-900 border-b border-gray-700">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center space-x-3">
+        <div class="status-indicator status-healthy"></div>
+        <span class="text-sm font-medium text-white">Lesson Scan Active</span>
+      </div>
+      <div class="text-xs text-gray-300 font-medium">
+        Screen <span id="currentScreen" class="font-bold">1</span> • <span id="totalIssues" class="font-bold">0</span> issues found
       </div>
     </div>
     
-    <!-- Enhanced Progress indicator -->
-    <div id="scanProgress" class="mt-6 hidden animate-fade-in">
-      <div class="flex items-center justify-between mb-3">
-        <span id="scanStatus" class="text-sm text-light font-medium">Initializing scan...</span>
-        <span id="progressPercent" class="text-sm font-bold text-primary">0%</span>
+    <div id="lessonProgress" class="hidden">
+      <div class="w-full bg-gray-800 rounded-full h-2 mb-2 overflow-hidden">
+        <div class="lesson-progress-bar h-2 rounded-full bg-gradient-to-r from-green-500 to-blue-500" style="width: 0%"></div>
       </div>
-      <div class="progress-bar">
-        <div id="progressFill" class="progress-fill" style="width: 0%"></div>
-      </div>
-    </div>
-    
-    <!-- Global scan status -->
-    <div id="globalStatus" class="mt-4 text-center text-sm text-primary hidden animate-pulse-slow font-medium">
-      🌐 Scanning multiple pages...
+      <p id="lessonStatus" class="text-xs text-gray-300">Navigate through lesson screens...</p>
     </div>
   </div>
 
-  <!-- Results Section -->
-  <section id="resultsContainer" class="hidden animate-slide-in">
-    <!-- Summary Cards -->
-    <div id="summaryCards" class="p-6 bg-accent border-b border-gray-700">
-      <div class="grid grid-cols-2 gap-4">
-        <div class="card rounded-xl p-4 shadow-lg hover:shadow-2xl transition-all duration-300">
-          <div>
-            <p class="text-sm text-accent font-medium">Total Issues</p>
-            <p id="issueCount" class="text-3xl font-bold gradient-text">0</p>
-          </div>
+  <!-- Enhanced Scan Progress -->
+  <div id="scanProgress" class="hidden p-5 bg-secondary border-b border-gray-700">
+    <div class="flex justify-between items-center mb-3">
+      <span id="scanStatus" class="text-sm font-medium text-light">Scanning...</span>
+      <span id="progressPercent" class="text-sm text-primary font-bold">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <!-- Enhanced Export Button -->
+  <div class="p-5 border-b border-gray-700">
+    <div class="relative">
+      <button id="exportBtn" class="w-full py-3 px-4 bg-gray-600 text-gray-400 cursor-not-allowed rounded-xl text-sm font-medium transition-all focus:outline-none" disabled aria-describedby="export-desc">
+        <div class="flex items-center justify-center space-x-2">
+          <span class="text-lg" aria-hidden="true">📄</span>
+          <span>Export PDF Report</span>
         </div>
-        
-        <div class="card rounded-xl p-4 shadow-lg hover:shadow-2xl transition-all duration-300">
-          <p class="text-sm text-accent mb-3 font-medium">Severity Breakdown</p>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-red-400 font-semibold">Critical</span>
-              <span id="criticalCount" class="text-xs font-bold bg-red-900 text-red-300 px-2 py-1 rounded-full">0</span>
+        <div id="export-desc" class="text-xs opacity-75 mt-1">Complete a scan first</div>
+      </button>
+      
+      <div id="exportDropdown" class="absolute right-0 mt-2 w-56 rounded-xl shadow-2xl z-50 hidden overflow-hidden bg-secondary border border-gray-600">
+        <div class="py-1">
+          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-light hover:bg-accent hover:text-primary transition-all duration-200 focus:outline-none focus:bg-accent" data-format="pdf">
+            <span class="text-lg" aria-hidden="true">📋</span>
+            <div>
+              <div class="font-semibold">PDF Report</div>
+              <div class="text-xs text-accent">Professional accessibility report</div>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-orange-400 font-semibold">Serious</span>
-              <span id="seriousCount" class="text-xs font-bold bg-orange-900 text-orange-300 px-2 py-1 rounded-full">0</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-yellow-400 font-semibold">Moderate</span>
-              <span id="moderateCount" class="text-xs font-bold bg-yellow-900 text-yellow-300 px-2 py-1 rounded-full">0</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-gray-400 font-semibold">Minor</span>
-              <span id="minorCount" class="text-xs font-bold bg-gray-700 text-gray-300 px-2 py-1 rounded-full">0</span>
-            </div>
-          </div>
+          </button>
+          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-light hover:bg-accent hover:text-primary transition-all duration-200 focus:outline-none focus:bg-accent" data-format="html">
+            <span class="text-lg" aria-hidden="true">📄</span>
+            <span>HTML Report</span>
+          </button>
+          <button class="export-option flex items-center space-x-3 w-full text-left px-4 py-3 text-sm text-light hover:bg-accent hover:text-primary transition-all duration-200 focus:outline-none focus:bg-accent" data-format="csv">
+            <span class="text-lg" aria-hidden="true">📊</span>
+            <span>CSV Export</span>
+          </button>
         </div>
       </div>
     </div>
-    
-    <!-- Filter Pills -->
-    <div class="px-6 py-4 bg-secondary border-b border-gray-700">
-      <div class="flex items-center space-x-3">
-        <button class="filter-pill filter-btn px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 focus:ring-offset-gray-900 active" data-filter="all">
+  </div>
+
+  <!-- Enhanced Results Container -->
+  <div id="resultsContainer" class="hidden animate-slide-in">
+    <!-- Enhanced Summary Stats -->
+    <div class="p-5 border-b border-gray-700">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold text-light">
+          <span id="issueCount">0</span> Issues Found
+        </h3>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-3">
+        <div class="p-3 bg-gradient-to-br from-red-900 to-red-800 bg-opacity-30 rounded-xl border border-red-800">
+          <div id="criticalCount" class="text-xl font-bold text-red-300">0</div>
+          <div class="text-xs text-red-400 font-medium">Critical</div>
+        </div>
+        <div class="p-3 bg-gradient-to-br from-orange-900 to-orange-800 bg-opacity-30 rounded-xl border border-orange-800">
+          <div id="seriousCount" class="text-xl font-bold text-orange-300">0</div>
+          <div class="text-xs text-orange-400 font-medium">Serious</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Enhanced Filter Buttons -->
+    <div class="p-5 border-b border-gray-700">
+      <div class="flex space-x-3 overflow-x-auto">
+        <button class="filter-btn filter-pill active px-4 py-2 rounded-full text-xs font-medium border whitespace-nowrap focus:outline-none" data-filter="all">
           <span>All Issues</span>
         </button>
-        <button class="filter-pill filter-btn px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 focus:ring-offset-gray-900" data-filter="a11y">
+        <button class="filter-btn filter-pill px-4 py-2 rounded-full text-xs font-medium border whitespace-nowrap focus:outline-none" data-filter="a11y">
           <span>Accessibility</span>
         </button>
       </div>
     </div>
-    
-    <!-- Issues List -->
+
+    <!-- Enhanced Issues List -->
     <div id="issuesList" class="max-h-96 overflow-y-auto bg-dark">
       <!-- Issues will be populated here -->
     </div>
-    
-    <!-- Quick Actions -->
-    <div id="quickActions" class="p-4 bg-accent border-t border-gray-700 hidden">
-      <div class="flex justify-center">
-        <button class="quick-export card hover:border-primary px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 hover:text-primary" data-format="pdf">
-          📋 Export PDF Report
+  </div>
+
+  <!-- Enhanced Screens Container -->
+  <div id="screensContainer" class="hidden animate-slide-in">
+    <!-- Enhanced Summary Stats -->
+    <div class="p-5 border-b border-gray-700">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold text-light">
+          Lesson Analysis Complete
+        </h3>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-3">
+        <div class="p-3 bg-gradient-to-br from-red-900 to-red-800 bg-opacity-30 rounded-xl border border-red-800">
+          <div id="criticalCount" class="text-xl font-bold text-red-300">0</div>
+          <div class="text-xs text-red-400 font-medium">Critical</div>
+        </div>
+        <div class="p-3 bg-gradient-to-br from-orange-900 to-orange-800 bg-opacity-30 rounded-xl border border-orange-800">
+          <div id="seriousCount" class="text-xl font-bold text-orange-300">0</div>
+          <div class="text-xs text-orange-400 font-medium">Serious</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Enhanced Filter Buttons -->
+    <div class="p-5 border-b border-gray-700">
+      <div class="flex space-x-3 overflow-x-auto">
+        <button class="filter-btn filter-pill active px-4 py-2 rounded-full text-xs font-medium border whitespace-nowrap focus:outline-none" data-filter="all">
+          <span>All Screens</span>
+        </button>
+        <button class="filter-btn filter-pill px-4 py-2 rounded-full text-xs font-medium border whitespace-nowrap focus:outline-none" data-filter="issues">
+          <span>With Issues</span>
         </button>
       </div>
     </div>
-  </section>
 
-  <!-- Empty State -->
-  <div id="emptyState" class="p-12 text-center bg-dark">
-    <div class="mb-6">
-      <div class="inline-block p-4 rounded-full glass-effect animate-glow">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 gradient-text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-        </svg>
-      </div>
-    </div>
-    <h3 class="text-2xl font-bold gradient-text mb-3">Ready to Test</h3>
-    <p class="text-secondary text-lg max-w-sm mx-auto mb-8">Click "Scan Page" to analyze the current page for accessibility issues.</p>
-    
-    <!-- Enhanced quick tips -->
-    <div class="mt-8 text-left max-w-sm mx-auto space-y-4 p-6 rounded-xl glass-effect">
-      <p class="text-sm text-light flex items-start">
-        <span class="mr-3 text-primary text-lg">💡</span>
-        <span>Hover over issues to highlight them on the page</span>
-      </p>
-      <p class="text-sm text-light flex items-start">
-        <span class="mr-3 text-primary text-lg">🎯</span>
-        <span>Click any issue for detailed information and AI suggestions</span>
-      </p>
-      <p class="text-sm text-light flex items-start">
-        <span class="mr-3 text-primary text-lg">⚡</span>
-        <span>Use keyboard shortcut Ctrl/Cmd + E to export</span>
-      </p>
+    <!-- Enhanced Screens List -->
+    <div id="screensList" class="max-h-96 overflow-y-auto bg-dark">
+      <!-- Screens will be populated here -->
     </div>
   </div>
 
-  <!-- Global Results Container -->
-  <div id="globalResultsContainer" class="hidden p-6 bg-secondary animate-slide-in border-t border-gray-700">
-    <h3 class="text-xl font-bold mb-4 flex items-center gradient-text">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-      </svg>
-      Global Scan Results
-    </h3>
-    <div id="globalResultsList" class="space-y-3">
-      <!-- Global results will be populated here -->
+  <!-- Enhanced Empty State -->
+  <div id="emptyState" class="text-center py-16 px-6">
+    <div class="mb-8">
+      <div class="inline-block p-6 rounded-2xl glass-effect">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+      </div>
+    </div>
+    <h3 class="text-2xl font-bold text-primary mb-3">Ready to Test</h3>
+    <p class="text-secondary text-lg max-w-sm mx-auto mb-8">Choose Quick Scan for current screen or Lesson Scan for complete lesson analysis</p>
+    
+    <!-- Enhanced Quick Tips -->
+    <div class="mt-8 text-left max-w-sm mx-auto space-y-4 p-6 rounded-2xl glass-effect">
+      <div class="text-sm font-semibold text-primary mb-3">How to use:</div>
+      <div class="space-y-3 text-sm text-secondary">
+        <div class="flex items-start space-x-3">
+          <span class="text-lg flex-shrink-0" aria-hidden="true">⚡</span>
+          <span><strong class="text-light">Quick Scan:</strong> Test current screen for critical accessibility issues</span>
+        </div>
+        <div class="flex items-start space-x-3">
+          <span class="text-lg flex-shrink-0" aria-hidden="true">📚</span>
+          <span><strong class="text-light">Lesson Scan:</strong> Start scan, navigate through lesson, then stop to get complete report</span>
+        </div>
+        <div class="flex items-start space-x-3">
+          <span class="text-lg flex-shrink-0" aria-hidden="true">🤖</span>
+          <span><strong class="text-light">AI Analysis:</strong> Get detailed recommendations for each issue</span>
+        </div>
+        <div class="flex items-start space-x-3">
+          <span class="text-lg flex-shrink-0" aria-hidden="true">📄</span>
+          <span><strong class="text-light">PDF Export:</strong> Download professional accessibility reports</span>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- Enhanced Issue Detail Modal -->
-  <div id="issueDetail" class="fixed inset-0 flex items-center justify-center hidden">
-    <!-- Backdrop -->
-    <div id="modalBackdrop" class="absolute inset-0 cursor-pointer"></div>
+  <div id="issueDetail" class="fixed inset-0 flex items-center justify-center hidden" role="dialog" aria-modal="true" aria-labelledby="issue-detail-title">
+    <!-- Enhanced Backdrop -->
+    <div id="modalBackdrop" class="absolute inset-0 cursor-pointer" aria-hidden="true"></div>
     
-    <div class="modal-content rounded-2xl shadow-2xl mx-4 border border-gray-700">
-      <!-- Modal Header -->
-      <div class="modal-header rounded-t-2xl">
+    <div class="modal-content mx-4 max-w-4xl w-full max-h-[90vh] flex flex-col">
+      <!-- Enhanced Modal Header -->
+      <div class="modal-header flex-shrink-0">
         <div class="flex justify-between items-start">
           <div class="flex items-center flex-1">
-            <!-- Back Button -->
-            <button id="backBtn" class="text-white hover:text-orange-300 mr-4 transition-all duration-200" title="Back to list">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            <!-- Enhanced Back Button -->
+            <button id="backBtn" class="text-white hover:text-orange-300 mr-4 transition-all duration-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-orange-300" title="Back to list" aria-label="Back to issues list">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
               </svg>
             </button>
-            <div>
-              <h3 id="detailTitle" class="font-bold mb-2"></h3>
+            <div class="flex-1">
+              <h3 id="detailTitle" class="font-bold mb-2 text-xl" id="issue-detail-title"></h3>
               <div class="flex items-center space-x-4 text-sm">
-                <span id="detailSeverity" class="px-3 py-1 glass-effect rounded-full font-semibold"></span>
-                <span id="detailCategory" class="text-orange-200"></span>
+                <span id="detailSeverity" class="severity-badge glass-effect"></span>
+                <span id="detailCategory" class="text-orange-200 font-medium"></span>
               </div>
             </div>
           </div>
-          <button id="closeDetail" class="text-white hover:text-orange-300 transition-all duration-200">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          <button id="closeDetail" class="text-white hover:text-orange-300 transition-all duration-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-orange-300" aria-label="Close modal">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
       </div>
       
-      <!-- Modal Body -->
-      <div class="modal-body">
+      <!-- Enhanced Modal Body -->
+      <div class="modal-body flex-1 overflow-y-auto">
         <div id="detailContent" class="space-y-6">
           <!-- populated dynamically -->
         </div>
         
-        <!-- AI Suggestions -->
-        <div class="ai-suggestions border-t border-gray-700 pt-6 mt-6">
+        <!-- Enhanced AI Suggestions -->
+        <div class="ai-suggestions border-t border-gray-700 pt-6 mt-8">
           <h4 class="font-bold text-light mb-4 flex items-center text-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
             AI Recommendations
           </h4>
           
           <div id="aiSuggestion" class="glass-effect text-light p-4 rounded-xl text-sm mb-4 border border-orange-500/30">
-            <div class="shimmer h-4 w-3/4 rounded mb-3"></div>
-            <div class="shimmer h-4 w-full rounded mb-3"></div>
-            <div class="shimmer h-4 w-5/6 rounded"></div>
+            Click the button below to get a personalized accessibility recommendation for this issue.
           </div>
           
-          <button id="fetchAiSuggestion" class="w-full btn-primary text-white px-6 py-4 rounded-xl font-bold transition-all transform hover:scale-[1.02] flex items-center justify-center space-x-3 shadow-2xl">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          <button id="fetchAiSuggestion" class="w-full btn-primary text-white px-6 py-4 rounded-xl font-bold transition-all transform hover:scale-[1.02] flex items-center justify-center space-x-3 shadow-2xl focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-offset-2 focus:ring-offset-gray-900">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            <span>Get Advanced AI Analysis</span>
+            <span>Get AI Recommendation</span>
           </button>
           
-          <div id="deepseekAiSuggestion" class="mt-4 glass-effect text-light p-4 rounded-xl text-sm hidden border border-gray-600">
-            <!-- AI suggestion will appear here -->
+          <div id="advancedAiSuggestion" class="mt-4 glass-effect text-light p-4 rounded-xl text-sm border border-gray-600">
+            <!-- Explanation card -->
+            <div class="ai-explanation detail-section">
+              <h5>Explanation</h5>
+              <div class="content-box">
+                When you use a <code>&lt;div role="alertdialog"&gt;</code>, screen readers must announce updates
+                <strong>immediately</strong>. Setting <code>aria-live="assertive"</code> guarantees that users
+                with disabilities get feedback on their progress as soon as it happens.
+              </div>
+            </div>
+          
+            <!-- Code block with copy button -->
+            <div class="code-block detail-section">
+              <div class="code-header">
+                <span>HTML</span>
+                <button
+                  class="copy-code-btn"
+                  onclick="copyToClipboard('#updatedMarkup')"
+                >
+                  Copy
+                </button>
+              </div>
+              <pre id="updatedMarkup" class="code-content">&lt;div
+  id="stage-feedback"
+  class=""
+  role="alertdialog"
+  aria-live="assertive"
+  aria-label="Feedback on your progress"
+&gt;
+  <!-- …your feedback content… -->
+&lt;/div&gt;</pre>
+            </div>
           </div>
+        
         </div>
       </div>
     </div>
   </div>
 
   <!-- Scripts -->
-  <script src="src/popup.js"></script>
+  <script type="module" src="src/config.js"></script>
+  <script type="module" src="src/api.js"></script>
+  <script type="module" src="src/popup.js"></script>
 </body>
 </html>
