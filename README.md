@@ -212,7 +212,7 @@ If you still see errors like `MISTRAL_API_KEY not set`, double-check that your e
 If you prefer to run the microservice in a Docker container, ensure your `.env` file (with `MISTRAL_API_KEY`, `OPENAI_API_KEY`, etc.) is located alongside `docker-compose.yml` at the project root (Docker Compose will automatically load it), then run:
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 Alternatively, to build and run the container manually:
